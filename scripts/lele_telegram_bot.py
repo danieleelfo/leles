@@ -26,6 +26,11 @@ ADMIN_IDS = [8733881519]  # Il tuo Chat ID con superpoteri
 VOICE_TMP_DIR = os.getenv("VOICE_TMP_DIR", "tmp_voice_in")
 os.makedirs(VOICE_TMP_DIR, exist_ok=True)
 
+# Aiutino per Whisper: orienta la trascrizione verso i comandi noti di Lelé
+# (query capitava fosse capito come "queri" — questo + il fuzzy match in
+# lele_engine9.is_query_trigger dovrebbero coprirlo da entrambi i lati)
+VOICE_INITIAL_PROMPT = "query, review, improve, edita, roast, critica"
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -174,7 +179,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # faster-whisper è bloccante: giralo in executor per non congelare l'event loop
         transcribed_text = await loop.run_in_executor(
-            None, lambda: transcribe_audio(ogg_in_path, language="it")
+            None,
+            lambda: transcribe_audio(
+                ogg_in_path, language="it", initial_prompt=VOICE_INITIAL_PROMPT
+            ),
         )
 
         if not transcribed_text:

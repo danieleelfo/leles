@@ -1,3 +1,4 @@
+import difflib
 import requests
 import time
 from core.memoryPG import (
@@ -16,6 +17,29 @@ from scripts.db_agent import generate_sql, execute_sql, format_results, interpre
 from scripts.improver_agent import improve_agent
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
+
+# Quanto deve essere simile la prima parola a "query" per contare come trigger.
+# 0.75 prende "queri"/"kuery"/"cuery" (mishearing tipici di Whisper) senza
+# scattare su parole italiane comuni tipo "quello"/"questa" (che stanno ~0.55).
+QUERY_TRIGGER_SIMILARITY = 0.75
+
+
+def is_query_trigger(text: str) -> bool:
+    """
+    True se la prima parola del messaggio assomiglia abbastanza a "query".
+    Serve a tollerare i piccoli errori di trascrizione vocale (Whisper a
+    volte sente "queri" invece di "query" e il retrieve non partiva più).
+    """
+    if not text:
+        return False
+
+    first_word = "".join(ch for ch in text.strip().split(" ")[0].lower() if ch.isalnum())
+    if not first_word:
+        return False
+
+    ratio = difflib.SequenceMatcher(None, first_word, "query").ratio()
+    return ratio >= QUERY_TRIGGER_SIMILARITY
+
 
 SYSTEM_PROMPT_GEMMA = """
 You are Lele, an AI pirate assistant.
@@ -129,7 +153,11 @@ Final:
 
 # 🗄️ DB AGENT
 def db_agent(user_input):
-    question = user_input[5:].strip() if user_input.lower().startswith("query") else user_input
+    if is_query_trigger(user_input):
+        parts = user_input.split(" ", 1)
+        question = parts[1].strip() if len(parts) > 1 else ""
+    else:
+        question = user_input
 
     print("⚙️  Generating SQL capitano...")
     sql = generate_sql(question)
@@ -177,7 +205,7 @@ def main():
 
         memory = build_memory_block(load_memory())
 
-        trigger_db      = user_input.lower().startswith("query")
+        trigger_db      = is_query_trigger(user_input)
         trigger_improve = user_input.lower().startswith("improve")
         trigger_llama   = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
 

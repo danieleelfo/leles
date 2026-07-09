@@ -43,9 +43,15 @@ def get_model() -> WhisperModel:
     return _model
 
 
-def transcribe_audio(file_path: str, language: str = "it") -> str:
+def transcribe_audio(file_path: str, language: str = "it", initial_prompt: str = None) -> str:
     """
     Trascrive un file audio (ogg/mp3/wav/m4a/...) in testo.
+
+    initial_prompt: testo opzionale passato a Whisper per orientare la
+    trascrizione verso un vocabolario noto (es. i comandi di Lelé: "query",
+    "review"...). Zero-effort dialect/style bias — non forza nulla, aumenta
+    solo la probabilità che Whisper scelga quelle parole quando l'audio è
+    ambiguo (utile per "query" che a volte esce come "queri").
 
     Ritorna stringa vuota se non riesce a estrarre nulla di intelligibile
     (es. audio muto o troppo rumoroso).
@@ -57,6 +63,7 @@ def transcribe_audio(file_path: str, language: str = "it") -> str:
         language=language,
         beam_size=5,
         vad_filter=True,  # filtra i silenzi — utile per i vocali Telegram
+        initial_prompt=initial_prompt,
     )
 
     text = " ".join(segment.text.strip() for segment in segments).strip()

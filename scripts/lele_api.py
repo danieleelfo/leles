@@ -25,6 +25,7 @@ from scripts.lele_engine9 import (
     llama_reviewer,
     db_agent,
     build_memory_block,
+    is_query_trigger,
 )
 app = FastAPI()
 
@@ -42,7 +43,7 @@ def ask_lele(q: Question):
 
     memory = build_memory_block(load_memory())
 
-    trigger_db = user_input.lower().startswith("query")
+    trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
     trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
 
