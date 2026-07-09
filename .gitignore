@@ -6,3 +6,4 @@ voices/
 tmp_tts/
 *.wav
 *.ogg
+logs/*.log
