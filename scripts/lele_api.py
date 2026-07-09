@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from core.memoryPG import (
-    load_memory,
+    load_memory_by_suffix,
     save_memory,
     get_memory_by_role
 )
@@ -41,7 +41,7 @@ def ask_lele(q: Question):
     if not user_input:
         return {"answer": "⚓ Capitano, dimmi qualcosa!", "type": "empty"}
 
-    memory = build_memory_block(load_memory())
+    memory = build_memory_block(load_memory_by_suffix("ES"))
 
     trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
@@ -49,7 +49,7 @@ def ask_lele(q: Question):
 
     # IMPROVE — disabilitato via Telegram per sicurezza (modifica file locali)
     if trigger_improve:
-        save_memory("USER", user_input)
+        save_memory("USER_ES", user_input)
         return {
             "answer": "🏴‍☠️ Il comando IMPROVE è disabilitato via Telegram per motivi di sicurezza (modifica file sul Mac).",
             "type": "improve_disabled"
@@ -57,8 +57,8 @@ def ask_lele(q: Question):
 
     elif trigger_db:
         formatted, lele_answer = db_agent(user_input)
-        save_memory("USER", user_input)
-        save_memory("LELE_DB", lele_answer)
+        save_memory("USER_ES", user_input)
+        save_memory("LELE_DB_ES", lele_answer)
         return {
             "answer": lele_answer,
             "data": formatted,
@@ -66,10 +66,10 @@ def ask_lele(q: Question):
         }
 
     elif trigger_llama:
-        last_gemma = get_memory_by_role("GEMMA")
+        last_gemma = get_memory_by_role("GEMMA_ES")
         final = llama_reviewer(user_input, last_gemma)
-        save_memory("USER", user_input)
-        save_memory("LELE", final)
+        save_memory("USER_ES", user_input)
+        save_memory("LELE_ES", final)
         return {
             "answer": final,
             "type": "llama_review"
@@ -77,8 +77,8 @@ def ask_lele(q: Question):
 
     else:
         gemma_out = gemma_agent(memory, user_input)
-        save_memory("USER", user_input)
-        save_memory("GEMMA", gemma_out)
+        save_memory("USER_ES", user_input)
+        save_memory("GEMMA_ES", gemma_out)
         return {
             "answer": gemma_out,
             "type": "gemma"
