@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+voices/
+.venv/
+tmp_tts/
+*.wav
+*.ogg
