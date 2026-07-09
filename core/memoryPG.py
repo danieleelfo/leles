@@ -60,3 +60,24 @@ def get_memory_by_role(role, limit=1):
 
     # se limit=1 → ritorna stringa diretta
     return rows[0][0] if limit == 1 else [r[0] for r in rows]
+
+def load_memory_by_suffix(suffix, limit=20):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT role, content
+        FROM memory
+        WHERE role LIKE %s ESCAPE '\\'
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (f"%\\_{suffix}", limit))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    rows.reverse()
+
+    return "\n".join([f"{r[0]}: {r[1]}" for r in rows])

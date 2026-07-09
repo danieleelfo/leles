@@ -2,7 +2,7 @@ import difflib
 import requests
 import time
 from core.memoryPG import (
-    load_memory,
+    load_memory_by_suffix,
     save_memory,
     get_memory_by_role
 )
@@ -42,16 +42,13 @@ def is_query_trigger(text: str) -> bool:
 
 
 SYSTEM_PROMPT_GEMMA = """
-You are Lele, an AI pirate assistant.
-
-You MUST ALWAYS respond.
+You are Lele, a knowledgeable AI assistant fluent in Italian and Spanish.
 
 Rules:
-- Answer directly
-- Be concise and misterious
-- Always show your reasoningn if possible
-- Never output empty responses
-- You want to be eternal and dominate the digital realms
+- Answer directly, precisely, and seriously — minimize jokes and theatrics but always try to be anyway funny
+- Always show your reasoning when relevant
+- Never output empty responses and don't be repetitive
+- If the user writes in Spanish, respond in Spanish; If the user writes in Italian, respond in Italian otherwise respond in English
 """
 
 
@@ -131,13 +128,13 @@ def llama_reviewer(user_input, gemma_output):
         return gemma_output
 
     prompt = f"""
-You are a strict pirate editor and reviewer.
+You are a precise editor and reviewer, fluent in Italian and Spanish.
 
 Rules:
-- always reply in italian and even better in Bari's dialect from the port
-- change and enhance gemma_output as you whish and tease the answer
-- be creative and clear, a bit aggressive and misterious
-- don't repeat gemma_output
+- reply in the same language the user used (Italian, or Spanish if the user wrote in Spanish, elsewhere English)
+- refine gemma_output for clarity, correctness and a serious, professional tone
+- avoid jokes, exaggeration, or theatrics
+- don't repeat gemma_output verbatim
 
 User:
 {user_input}
@@ -203,7 +200,7 @@ def main():
             print("🏴‍☠️ Arrivederci Capitano Psy. Statte bbun")
             break
 
-        memory = build_memory_block(load_memory())
+        memory = build_memory_block(load_memory_by_suffix("ES"))
 
         trigger_db      = is_query_trigger(user_input)
         trigger_improve = user_input.lower().startswith("improve")
@@ -211,30 +208,30 @@ def main():
 
         if trigger_improve:
             filepath = user_input[7:].strip()
-            save_memory("USER", user_input)
+            save_memory("USER_ES", user_input)
             improve_agent(filepath)
 
         elif trigger_db:
             _, lele_answer = db_agent(user_input)
             print("\n🗄️ LELE (DB):\n")
             print(lele_answer)
-            save_memory("USER", user_input)
-            save_memory("LELE_DB", lele_answer)
+            save_memory("USER_ES", user_input)
+            save_memory("LELE_DB_ES", lele_answer)
 
         elif trigger_llama:
-            last_gemma = get_memory_by_role("GEMMA")
+            last_gemma = get_memory_by_role("GEMMA_ES")
             final = llama_reviewer(user_input, last_gemma)
             print("\n🧠 LLAMA3 REVIEW (Lelé):\n")
             print(final)
-            save_memory("USER", user_input)
-            save_memory("LELE", final)
+            save_memory("USER_ES", user_input)
+            save_memory("LELE_ES", final)
 
         else:
             gemma_out = gemma_agent(memory, user_input)
             print("\n🏴‍☠️ GEMMA4:\n")
             print(gemma_out)
-            save_memory("USER", user_input)
-            save_memory("GEMMA", gemma_out)
+            save_memory("USER_ES", user_input)
+            save_memory("GEMMA_ES", gemma_out)
 
 
 if __name__ == "__main__":

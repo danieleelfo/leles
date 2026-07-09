@@ -16,8 +16,14 @@ from voice_transcriber import transcribe_audio
 from tts_engine import synthesize_to_ogg
 
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8864071391:AAGnLTkkElhzHsBHvc7LhwuPuNmxOl6yyZ0")
-LELE_API_URL = os.getenv("LELE_API_URL", "http://localhost:8080/ask")
+from dotenv import load_dotenv
+load_dotenv()
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+LELE_API_URL = os.getenv("LELE_API_URL", "http://localhost:8082/ask")
+
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN non impostato — controlla il file .env")
 
 MAX_QUESTIONS_PER_DAY = 50
 ADMIN_IDS = [8733881519]  # Il tuo Chat ID con superpoteri

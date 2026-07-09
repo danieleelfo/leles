@@ -7,3 +7,4 @@ tmp_tts/
 *.wav
 *.ogg
 logs/*.log
+.env
