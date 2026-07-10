@@ -45,6 +45,7 @@ VOICE_MODEL_DIR = os.getenv("TTS_VOICE_MODEL_DIR", "voices")
 VOICE_MODELS = {
     "it": os.getenv("TTS_VOICE_MODEL_IT", "it_IT-riccardo-x_low"),
     "es": os.getenv("TTS_VOICE_MODEL_ES", "es_ES-davefx-medium"),
+    "en": os.getenv("TTS_VOICE_MODEL_EN", "en_US-lessac-medium"),
 }
 
 TTS_TMP_DIR = os.getenv("TTS_TMP_DIR", "tmp_tts")
@@ -58,9 +59,9 @@ TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "6000"))
 _voices: dict[str, PiperVoice] = {}
 
 
-def _get_voice(lang: str = "it") -> PiperVoice:
+def _get_voice(lang: str = "en") -> PiperVoice:
     global _voices
-    model_name = VOICE_MODELS.get(lang, VOICE_MODELS["it"])
+    model_name = VOICE_MODELS.get(lang, VOICE_MODELS["en"])
 
     if model_name not in _voices:
         model_path = os.path.join(VOICE_MODEL_DIR, f"{model_name}.onnx")
@@ -90,14 +91,14 @@ def _strip_for_speech(text: str) -> str:
     return text
 
 
-def synthesize_to_ogg(text: str, lang: str = "it") -> str:
+def synthesize_to_ogg(text: str, lang: str = "en") -> str:
     """
     Sintetizza `text` nella lingua richiesta e ritorna il path di un file
     .ogg/opus pronto per Telegram reply_voice(). Il chiamante è responsabile
     di cancellarlo dopo l'invio.
 
     lang: "it" o "es" — determina quale modello Piper viene usato.
-          Se la lingua non è mappata, ricade su "it".
+          Se la lingua non è mappata, ricade su "en".
     """
     voice = _get_voice(lang)
     clean_text = _strip_for_speech(text)

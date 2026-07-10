@@ -237,9 +237,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             detected_lang = detect(answer)[:2]
         except LangDetectException:
-            detected_lang = "it"
+            detected_lang = "en"
 
-        tts_lang = detected_lang if detected_lang in ("it", "es") else "it"
+        tts_lang = detected_lang if detected_lang in ("it", "es", "en") else "en"
 
         ogg_out_path = await loop.run_in_executor(
             None, lambda: synthesize_to_ogg(answer, lang=tts_lang)
