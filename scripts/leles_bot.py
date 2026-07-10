@@ -14,6 +14,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 
 from voice_transcriber import transcribe_audio
 from tts_engine import synthesize_to_ogg
+from tts_engine import synthesize_multilang_to_ogg
 
 from langdetect import detect, LangDetectException
 
@@ -103,8 +104,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     chat_id = update.effective_chat.id
+
     message = update.message.text
+
+    loop = asyncio.get_running_loop()
+
+    send_voice = False
+
+    VOICE_PREFIXES = (
+        "audio&text",
+        "audio&txt",
+        "aud&text",
+        "audio&testo",
+    )
+
+    for prefix in VOICE_PREFIXES:
+        if message.lower().startswith(prefix):
+            send_voice = True
+            message = message[len(prefix):].strip()
+            break
 
     logger.info(f"Messaggio da ID {chat_id} ({update.effective_user.username}): '{message}'")
 
@@ -144,6 +164,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         await update.message.reply_text(full_message, parse_mode=parse_mode_to_use)
+        
+        if send_voice:
+            ogg_out_path = None
+            try:
+                ogg_out_path = await loop.run_in_executor(
+                    None,
+                    lambda: synthesize_multilang_to_ogg(answer)
+                )
+
+                with open(ogg_out_path, "rb") as voice_out:
+                    await update.message.reply_voice(voice=voice_out)
+
+            finally:
+                if ogg_out_path and os.path.exists(ogg_out_path):
+                    os.remove(ogg_out_path)
 
     except httpx.TimeoutException:
         await thinking_msg.edit_text("⏱️ Lelé ci sta pensando troppo su... riprova.")
@@ -234,15 +269,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- STEP 3: rispondi con un vocale (fallback a testo se il TTS fallisce) ---
     ogg_out_path = None
     try:
-        try:
-            detected_lang = detect(answer)[:2]
-        except LangDetectException:
-            detected_lang = "en"
-
-        tts_lang = detected_lang if detected_lang in ("it", "es", "en") else "en"
-
         ogg_out_path = await loop.run_in_executor(
-            None, lambda: synthesize_to_ogg(answer, lang=tts_lang)
+            None,
+            lambda: synthesize_multilang_to_ogg(answer)
         )
         with open(ogg_out_path, "rb") as voice_out:
             await update.message.reply_voice(voice=voice_out)

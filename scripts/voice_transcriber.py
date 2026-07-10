@@ -19,7 +19,7 @@ from faster_whisper import WhisperModel
 logger = logging.getLogger(__name__)
 
 # --- Config (override via variabili ambiente, nessuna modifica al codice) ---
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")   # tiny/base/small/medium/large-v3
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "medium")   # tiny/base/small/medium/large-v3
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")             # su Mac senza CUDA: sempre "cpu"
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")  # int8 = molto più veloce su CPU
 

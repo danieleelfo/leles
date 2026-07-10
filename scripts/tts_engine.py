@@ -18,6 +18,7 @@ Setup (una tantum, sul Mac):
     pip install piper-tts
     python3 -m piper.download_voices --download-dir voices it_IT-riccardo-x_low
     python3 -m piper.download_voices --download-dir voices es_ES-davefx-medium
+    python3 -m piper.download_voices --download-dir voices en_US-lessac-medium 
 
     # serve ffmpeg per convertire il wav in ogg/opus (formato voice-note Telegram)
     brew install ffmpeg
@@ -37,6 +38,12 @@ import subprocess
 from piper import PiperVoice
 
 logger = logging.getLogger(__name__)
+
+from langdetect import detect, LangDetectException
+
+MIN_SEGMENT_LEN = 15  # sotto questa lunghezza langdetect non è affidabile
+MAX_SEGMENTS = 15      # tetto di sicurezza: troppi segmenti = troppa latenza
+
 
 # --- Config ---------------------------------------------------------------
 
@@ -143,3 +150,115 @@ def synthesize_to_ogg(text: str, lang: str = "en") -> str:
     finally:
         if os.path.exists(wav_path):
             os.remove(wav_path)
+
+def _split_into_lang_segments(text: str) -> list[tuple[str, str]]:
+    """
+    Divide il testo in blocchi contigui della stessa lingua rilevata.
+    Segmenti troppo corti ereditano la lingua del blocco precedente
+    invece di essere classificati alla cieca (langdetect è inaffidabile
+    su testi brevissimi).
+    """
+    raw_parts = re.split(r'(?<=[.!?])\s+|\n+', text)
+    raw_parts = [p.strip() for p in raw_parts if p.strip()]
+
+    segments: list[tuple[str, str]] = []
+    last_lang = "it"
+
+    for part in raw_parts:
+        if len(part) >= MIN_SEGMENT_LEN:
+            try:
+                lang = detect(part)[:2]
+            except LangDetectException:
+                lang = last_lang
+        else:
+            lang = last_lang
+
+        if lang not in VOICE_MODELS:
+            lang = last_lang if last_lang in VOICE_MODELS else "en"
+
+        if segments and segments[-1][0] == lang:
+            prev_lang, prev_text = segments[-1]
+            segments[-1] = (prev_lang, f"{prev_text} {part}")
+        else:
+            segments.append((lang, part))
+
+        last_lang = lang
+
+    # Tetto di sicurezza: se ci sono troppi micro-segmenti (frasi che
+    # alternano lingua di continuo), meglio collassare tutto sulla
+    # lingua dominante piuttosto che fare 30 sintesi separate.
+    if len(segments) > MAX_SEGMENTS:
+        dominant_lang = max(
+            VOICE_MODELS.keys(),
+            key=lambda l: sum(len(t) for lg, t in segments if lg == l)
+        )
+        return [(dominant_lang, text)]
+
+    return segments
+
+
+def synthesize_multilang_to_ogg(text: str) -> str:
+    """
+    Come synthesize_to_ogg, ma rileva la lingua per ogni segmento del
+    testo e usa la voce Piper corrispondente per ciascuno, invece di
+    leggere tutto con una sola voce. Utile quando la risposta mescola
+    più lingue (dialetto + traduzione tra parentesi, code-switching).
+    """
+    clean_text = _strip_for_speech(text)
+
+    if not clean_text:
+        raise ValueError("Testo vuoto dopo la pulizia: niente da sintetizzare.")
+
+    segments = _split_into_lang_segments(clean_text)
+
+    file_id = uuid.uuid4().hex
+    wav_paths = []
+
+    try:
+        for i, (lang, seg_text) in enumerate(segments):
+            voice = _get_voice(lang)
+            wav_path = os.path.join(TTS_TMP_DIR, f"{file_id}_{i}.wav")
+            with wave.open(wav_path, "wb") as wav_file:
+                voice.synthesize_wav(seg_text, wav_file)
+            wav_paths.append(wav_path)
+
+        ogg_path = os.path.join(TTS_TMP_DIR, f"{file_id}.ogg")
+
+        if len(wav_paths) == 1:
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", wav_paths[0],
+                 "-c:a", "libopus", "-b:a", "32k", ogg_path],
+                capture_output=True, timeout=60,
+            )
+        else:
+            # Voci diverse possono avere sample rate diversi (es.
+            # x_low vs medium) — resample esplicito prima del concat
+            # per evitare glitch o fallimento silenzioso di ffmpeg.
+            inputs = []
+            filter_parts = []
+            for i, wp in enumerate(wav_paths):
+                inputs += ["-i", wp]
+                filter_parts.append(f"[{i}:a]aresample=22050[a{i}]")
+            concat_inputs = "".join(f"[a{i}]" for i in range(len(wav_paths)))
+            filter_complex = ";".join(filter_parts) + \
+                f";{concat_inputs}concat=n={len(wav_paths)}:v=0:a=1[out]"
+
+            result = subprocess.run(
+                ["ffmpeg", "-y", *inputs,
+                 "-filter_complex", filter_complex,
+                 "-map", "[out]",
+                 "-c:a", "libopus", "-b:a", "32k", ogg_path],
+                capture_output=True, timeout=90,
+            )
+
+        if result.returncode != 0 or not os.path.exists(ogg_path):
+            raise RuntimeError(
+                f"ffmpeg concat failed: {result.stderr.decode(errors='ignore')}"
+            )
+
+        return ogg_path
+
+    finally:
+        for wp in wav_paths:
+            if os.path.exists(wp):
+                os.remove(wp)
