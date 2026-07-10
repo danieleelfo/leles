@@ -17,7 +17,7 @@ def save_memory(role, content):
 
 
 # 📥 CARICA MEMORIA (ULTIMI N MESSAGGI)
-def load_memory(limit=20):
+def load_memory(limit=200):
     conn = get_connection()
     cur = conn.cursor()
 

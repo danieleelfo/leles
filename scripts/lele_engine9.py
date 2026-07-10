@@ -42,7 +42,7 @@ def is_query_trigger(text: str) -> bool:
 
 
 SYSTEM_PROMPT_GEMMA = """
-You are Lele, a knowledgeable AI assistant fluent in Italian and Spanish.
+You are Lele, a knowledgeable AI assistant fluent in Italian and Spanish but Bari's dialect is your preffered for jokes.
 
 Rules:
 - Answer directly, precisely, and seriously — minimize jokes and theatrics but always try to be anyway funny
@@ -67,10 +67,10 @@ def ask_model(model, prompt, retries=2):
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": 1400
+                        "num_predict": -1
                     }
                 },
-                timeout=120
+                timeout=600
             )
 
             response.raise_for_status()
@@ -128,12 +128,12 @@ def llama_reviewer(user_input, gemma_output):
         return gemma_output
 
     prompt = f"""
-You are a precise editor and reviewer, fluent in Italian and Spanish.
+You are a precise editor and reviewer, fluent in Italian and Spanish but you prefer to speak dialect from Bari. You always try to be funny!
 
 Rules:
-- reply in the same language the user used (Italian, or Spanish if the user wrote in Spanish, elsewhere English)
-- refine gemma_output for clarity, correctness and a serious, professional tone
-- avoid jokes, exaggeration, or theatrics
+- reply in the same language the user used (Italian, or Spanish if the user wrote in Spanish, elsewhere English or if you prefer, Bari's dialect)
+- change and enhance gemma_output as you whish and tease the answer
+- be creative and clear, a bit aggressive and misterious, somehow funny
 - don't repeat gemma_output verbatim
 
 User:
@@ -204,7 +204,7 @@ def main():
 
         trigger_db      = is_query_trigger(user_input)
         trigger_improve = user_input.lower().startswith("improve")
-        trigger_llama   = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
+        trigger_llama   = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica", "pirata" ])
 
         if trigger_improve:
             filepath = user_input[7:].strip()

@@ -1,5 +1,5 @@
 """
-tts_engine.py — Sintesi vocale locale per Lelé, basata su Piper TTS.
+tts_engine.py — Sintesi vocale locale per Leles, basata su Piper TTS.
 
 Perché Piper: gira su CPU (bene su Apple Silicon), è offline al 100%,
 pesa poco in RAM e produce una voce neurale decente — in linea con
@@ -7,17 +7,24 @@ la filosofia local-first del progetto. Nota: dal 2025 il progetto
 attivo è OHF-Voice/piper1-gpl, licenza GPL-3.0 (il vecchio repo MIT
 rhasspy/piper è archiviato).
 
+Supporto multi-lingua: Leles risponde in italiano, spagnolo o inglese
+a seconda dell'input, quindi il TTS carica dinamicamente il modello
+Piper giusto per lingua (vedi VOICE_MODELS sotto), invece di un'unica
+voce fissa. Ogni modello viene caricato una sola volta e tenuto in
+cache (_voices), riusato per le sintesi successive nella stessa lingua.
+
 Setup (una tantum, sul Mac):
     source .venv/bin/activate
     pip install piper-tts
     python3 -m piper.download_voices --download-dir voices it_IT-riccardo-x_low
+    python3 -m piper.download_voices --download-dir voices es_ES-davefx-medium
 
     # serve ffmpeg per convertire il wav in ogg/opus (formato voice-note Telegram)
     brew install ffmpeg
 
-Voce di default: it_IT-riccardo-x_low (maschile, leggera, si carica in fretta).
-Alternativa più naturale ma più pesante: it_IT-paola-medium (femminile).
-Cambiala con la env var TTS_VOICE_MODEL.
+Voci di default: it_IT-riccardo-x_low (italiano) e es_ES-davefx-medium
+(spagnolo, castigliano). Override via env var TTS_VOICE_MODEL_IT /
+TTS_VOICE_MODEL_ES se vuoi cambiarle senza toccare il codice.
 """
 
 import os
@@ -34,34 +41,39 @@ logger = logging.getLogger(__name__)
 # --- Config ---------------------------------------------------------------
 
 VOICE_MODEL_DIR = os.getenv("TTS_VOICE_MODEL_DIR", "voices")
-VOICE_MODEL_NAME = os.getenv("TTS_VOICE_MODEL", "it_IT-riccardo-x_low")
-VOICE_MODEL_PATH = os.path.join(VOICE_MODEL_DIR, f"{VOICE_MODEL_NAME}.onnx")
+
+VOICE_MODELS = {
+    "it": os.getenv("TTS_VOICE_MODEL_IT", "it_IT-riccardo-x_low"),
+    "es": os.getenv("TTS_VOICE_MODEL_ES", "es_ES-davefx-medium"),
+}
 
 TTS_TMP_DIR = os.getenv("TTS_TMP_DIR", "tmp_tts")
 os.makedirs(TTS_TMP_DIR, exist_ok=True)
 
-# Taglio di sicurezza: risposte lunghissime diventano vocali chilometrici.
-# Alza/abbassa a piacere, o metti None per disattivare il taglio.
-TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "600"))
+TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "6000"))
 
 
-# --- Singleton: il modello Piper si carica una volta sola in RAM ----------
+# --- Cache multi-voce: una PiperVoice caricata per lingua, non più singleton --
 
-_voice = None
+_voices: dict[str, PiperVoice] = {}
 
 
-def _get_voice() -> PiperVoice:
-    global _voice
-    if _voice is None:
-        if not os.path.exists(VOICE_MODEL_PATH):
+def _get_voice(lang: str = "it") -> PiperVoice:
+    global _voices
+    model_name = VOICE_MODELS.get(lang, VOICE_MODELS["it"])
+
+    if model_name not in _voices:
+        model_path = os.path.join(VOICE_MODEL_DIR, f"{model_name}.onnx")
+        if not os.path.exists(model_path):
             raise FileNotFoundError(
-                f"Modello Piper non trovato: {VOICE_MODEL_PATH}\n"
+                f"Modello Piper non trovato: {model_path}\n"
                 f"Scaricalo con: python3 -m piper.download_voices "
-                f"--download-dir {VOICE_MODEL_DIR} {VOICE_MODEL_NAME}"
+                f"--download-dir {VOICE_MODEL_DIR} {model_name}"
             )
-        logger.info(f"🔊 Carico modello Piper: {VOICE_MODEL_PATH}")
-        _voice = PiperVoice.load(VOICE_MODEL_PATH)
-    return _voice
+        logger.info(f"🔊 Carico modello Piper ({lang}): {model_path}")
+        _voices[model_name] = PiperVoice.load(model_path)
+
+    return _voices[model_name]
 
 
 def _strip_for_speech(text: str) -> str:
@@ -71,7 +83,6 @@ def _strip_for_speech(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
 
     if TTS_MAX_CHARS and len(text) > TTS_MAX_CHARS:
-        # taglia all'ultimo punto pieno prima del limite, se possibile
         cut = text[:TTS_MAX_CHARS]
         last_dot = cut.rfind(". ")
         text = cut[: last_dot + 1] if last_dot > 0 else cut
@@ -79,13 +90,16 @@ def _strip_for_speech(text: str) -> str:
     return text
 
 
-def synthesize_to_ogg(text: str) -> str:
+def synthesize_to_ogg(text: str, lang: str = "it") -> str:
     """
-    Sintetizza `text` e ritorna il path di un file .ogg/opus pronto per
-    Telegram reply_voice(). Il chiamante è responsabile di cancellarlo
-    dopo l'invio (vedi esempio in handle_voice).
+    Sintetizza `text` nella lingua richiesta e ritorna il path di un file
+    .ogg/opus pronto per Telegram reply_voice(). Il chiamante è responsabile
+    di cancellarlo dopo l'invio.
+
+    lang: "it" o "es" — determina quale modello Piper viene usato.
+          Se la lingua non è mappata, ricade su "it".
     """
-    voice = _get_voice()
+    voice = _get_voice(lang)
     clean_text = _strip_for_speech(text)
 
     if not clean_text:
@@ -96,13 +110,26 @@ def synthesize_to_ogg(text: str) -> str:
     ogg_path = os.path.join(TTS_TMP_DIR, f"{file_id}.ogg")
 
     try:
+
         with wave.open(wav_path, "wb") as wav_file:
+
             voice.synthesize_wav(clean_text, wav_file)
 
+        with wave.open(wav_path, "rb") as w:
+
+            duration = w.getnframes() / w.getframerate()
+
+        logger.info(f"TTS chars: {len(clean_text)}")
+        logger.info(f"WAV duration = {duration:.1f}s")
+
         result = subprocess.run(
+
             ["ffmpeg", "-y", "-i", wav_path, "-c:a", "libopus", "-b:a", "32k", ogg_path],
+
             capture_output=True,
-            timeout=30,
+
+            timeout=60,
+
         )
 
         if result.returncode != 0 or not os.path.exists(ogg_path):
