@@ -4,14 +4,17 @@ import time
 from core.memoryPG import (
     load_memory_by_suffix,
     save_memory,
+    load_memory_structured,
     get_memory_by_role
 )
 
+# questa import dovrebbe essere inutile/obsoleta
 from core.memory_query import (
     get_all_memory,
     get_memory_by_id,
     search_memory
 )
+# Fine della import obsoleta
 
 from scripts.db_agent import generate_sql, execute_sql, format_results, interpret_results
 from scripts.improver_agent import improve_agent
@@ -97,14 +100,25 @@ def gemma_agent(memory, user_input):
 
     if "id" in user_input.lower():
         try:
-            mem_id = user_input.lower().split("id")[1].strip()
-            mem_context = get_memory_by_id(mem_id) or "Not found"
-        except:
+            mem_id = int(user_input.lower().split("id")[1].strip())
+            rows = load_memory_structured(limit=200)
+            match = next(
+                (r for r in rows if r["id"] == mem_id and r["role"].endswith("_ES")),
+                None
+            )
+            mem_context = f"{match['role']}: {match['content']}" if match else "Not found"
+        except (ValueError, IndexError):
             mem_context = "Invalid ID format"
 
     elif "search" in user_input.lower():
         keyword = user_input.lower().replace("search", "").strip()
-        mem_context = "\n".join(search_memory(keyword))
+        rows = load_memory_structured(limit=200)
+        matches = [
+            f"{r['role']}: {r['content']}"
+            for r in rows
+            if r["role"].endswith("_ES") and keyword in r["content"].lower()
+        ]
+        mem_context = "\n".join(matches[-5:]) if matches else "Not found"
 
     else:
         mem_context = "\n".join(memory.split("\n")[-5:]) if memory else "No memory"
@@ -120,7 +134,6 @@ Answer:
 """.strip()
 
     return ask_model("gemma4:latest", prompt)
-
 
 # 🧠 LLAMA REVIEWER
 def llama_reviewer(user_input, gemma_output):
@@ -218,7 +231,7 @@ def main():
             print("\n📦 EXPORT:\n")
             print(result)
             save_memory("USER_ES", user_input)
-            save_memory("LELE_EXPORT", result)
+            save_memory("LELE_EXPORT_ES", result)
 
         elif trigger_db:
             _, lele_answer = db_agent(user_input)
