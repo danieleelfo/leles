@@ -1,17 +1,16 @@
-from core.memoryPG import load_memory
+from core.memoryPG import load_memory, get_memory_by_id_db
 
 def get_all_memory():
     return load_memory().split("\n")
 
 
 def get_memory_by_id(mem_id):
-    memory = get_all_memory()
+    try:
+        mem_id_int = int(mem_id)
+    except (TypeError, ValueError):
+        return None
 
-    for line in memory:
-        if f"id {mem_id}" in line:
-            return line
-
-    return None
+    return get_memory_by_id_db(mem_id_int)
 
 
 def search_memory(keyword, limit=5):

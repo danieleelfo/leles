@@ -115,3 +115,23 @@ def load_memory_structured(limit=200):
         }
         for r in rows
     ]
+
+def get_memory_by_id_db(mem_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, role, content, created_at
+        FROM memory
+        WHERE id = %s
+    """, (mem_id,))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {"id": row[0], "role": row[1], "content": row[2], "created_at": row[3]}
