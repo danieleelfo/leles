@@ -15,6 +15,7 @@ from core.memory_query import (
 
 from scripts.db_agent import generate_sql, execute_sql, format_results, interpret_results
 from scripts.improver_agent import improve_agent
+from scripts.export_agent import export_agent
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
@@ -203,6 +204,7 @@ def main():
         memory = build_memory_block(load_memory_by_suffix("ES"))
 
         trigger_db      = is_query_trigger(user_input)
+        trigger_export  = user_input.lower().startswith("esporta")
         trigger_improve = user_input.lower().startswith("improve")
         trigger_llama   = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica", "pirata" ])
 
@@ -210,6 +212,13 @@ def main():
             filepath = user_input[7:].strip()
             save_memory("USER_ES", user_input)
             improve_agent(filepath)
+            
+        elif trigger_export:
+            result = export_agent(user_input)
+            print("\n📦 EXPORT:\n")
+            print(result)
+            save_memory("USER_ES", user_input)
+            save_memory("LELE_EXPORT", result)
 
         elif trigger_db:
             _, lele_answer = db_agent(user_input)

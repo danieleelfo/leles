@@ -15,18 +15,26 @@ Comandi supportati:
 
 Output:
     YAML
+
+Nota tecnica: usa core.memoryPG.load_memory_structured() invece delle
+funzioni stringa in core.memory_query (get_all_memory / get_memory_by_id /
+search_memory). Quelle lavorano su righe "ROLE: content" già appiattite,
+che non portano l'id reale della riga DB e rendono il filtro per ruolo
+inaffidabile (r["role"] su una stringa esplode). load_memory_structured
+ritorna dict {id, role, content, created_at}, quindi tutti i comandi qui
+sotto lavorano su dati veri, non su testo parsato a mano.
 """
 
 import re
 import yaml
 
-from core.memory_query import (
-    get_all_memory,
-    get_memory_by_id,
-    search_memory,
-)
+from core.memoryPG import load_memory_structured
 
-from core.memoryPG import load_memory_by_suffix
+# Finestra di ricerca per "cerca"/"ruolo": quante righe recenti scansionare
+# prima di applicare il filtro. Se in futuro il DB cresce molto e serve
+# cercare più indietro, alza questo valore (o passa a una query SQL con
+# WHERE invece del filtro Python).
+SEARCH_WINDOW = 200
 
 
 def _yaml(data):
@@ -50,9 +58,10 @@ def export_agent(command: str) -> str:
     m = re.match(r"esporta(?:\s+id)?\s+(\d+)$", cmd)
 
     if m:
-        mem_id = m.group(1)
+        mem_id = int(m.group(1))
 
-        result = get_memory_by_id(mem_id)
+        rows = load_memory_structured(limit=SEARCH_WINDOW)
+        result = next((r for r in rows if r["id"] == mem_id), None)
 
         if not result:
             return "❌ ID non trovato."
@@ -70,27 +79,28 @@ def export_agent(command: str) -> str:
     )
 
     if m:
-
         keyword = m.group(1).strip()
-        limit = int(m.group(2) or 9999)
+        limit = int(m.group(2)) if m.group(2) else 9999
 
-        rows = search_memory(keyword)
+        rows = load_memory_structured(limit=SEARCH_WINDOW)
+        results = [r for r in rows if keyword in r["content"].lower()]
 
-        return _yaml(rows[:limit])
+        return _yaml(results[-limit:])
 
     # ---------------------------------------------------------
     # esporta ultime 20
     # ---------------------------------------------------------
 
-    m = re.match(r"esporta\s+ultime\s+(\d+)", cmd)
+    m = re.match(r"esporta\s+ultime\s+(\d+)$", cmd)
 
     if m:
-
         limit = int(m.group(1))
 
-        rows = get_all_memory()
+        # limit passato direttamente alla query SQL: niente troncamento
+        # nascosto a 20/200, "ultime 500" funziona davvero se il DB ce l'ha.
+        rows = load_memory_structured(limit=limit)
 
-        return _yaml(rows[-limit:])
+        return _yaml(rows)
 
     # ---------------------------------------------------------
     # esporta ruolo gemma
@@ -103,21 +113,13 @@ def export_agent(command: str) -> str:
     )
 
     if m:
-
         role = m.group(1).upper()
-        limit = int(m.group(2) or 9999)
+        limit = int(m.group(2)) if m.group(2) else 9999
 
-        rows = get_all_memory()
+        rows = load_memory_structured(limit=SEARCH_WINDOW)
+        results = [r for r in rows if r["role"].upper().startswith(role)]
 
-        rows = [
-            r
-            for r in rows
-            if r["role"].startswith(role)
-        ]
-
-        rows = rows[-limit:]
-
-        return _yaml(rows)
+        return _yaml(results[-limit:])
 
     return (
         "Comandi disponibili:\n\n"

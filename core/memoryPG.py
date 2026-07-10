@@ -81,3 +81,37 @@ def load_memory_by_suffix(suffix, limit=20):
     rows.reverse()
 
     return "\n".join([f"{r[0]}: {r[1]}" for r in rows])
+
+def load_memory_structured(limit=200):
+    """
+    Come load_memory(), ma ritorna dati strutturati (id/role/content/
+    timestamp reali) invece di stringhe pre-formattate. Serve a
+    export_agent per id reali, filtro ruolo affidabile e ordinamento
+    corretto — cose che load_memory() da sola non può dare.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, role, content, created_at
+        FROM memory
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (limit,))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    rows.reverse()
+
+    return [
+        {
+            "id": r[0],
+            "role": r[1],
+            "content": r[2],
+            "created_at": r[3].isoformat() if r[3] else None,
+        }
+        for r in rows
+    ]
