@@ -1,5 +1,5 @@
 """
-lele_telegram_bot.py — Bot Telegram per Lelé, aperto a tutti con rate limit
+leles_bot.py — Bot Telegram per Lelé ES, aperto a tutti con rate limit
 di 50 domande al giorno per chat_id (Illimitate per l'Admin).
 Versione Ottimizzata (Async & Thread-Safe) ES
 """

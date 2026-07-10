@@ -29,6 +29,8 @@ from scripts.lele_engine9 import (
 )
 app = FastAPI()
 
+from scripts.export_agent import export_agent
+
 
 class Question(BaseModel):
     message: str
@@ -38,6 +40,8 @@ class Question(BaseModel):
 def ask_lele(q: Question):
     user_input = q.message.strip()
 
+    print(f"INPUT = {user_input}")
+
     if not user_input:
         return {"answer": "⚓ Capitano, dimmi qualcosa!", "type": "empty"}
 
@@ -45,7 +49,10 @@ def ask_lele(q: Question):
 
     trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
+    trigger_export = user_input.lower().startswith("esporta")
     trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
+    
+    print(f"EXPORT = {user_input.lower().startswith('esporta')}")
 
     # IMPROVE — disabilitato via Telegram per sicurezza (modifica file locali)
     if trigger_improve:
@@ -63,6 +70,20 @@ def ask_lele(q: Question):
             "answer": lele_answer,
             "data": formatted,
             "type": "db"
+        }
+        
+    elif trigger_export:
+        print("######## EXPORT AGENT ########")
+        print(f"Comando: {user_input}")
+
+        result = export_agent(user_input)
+
+        save_memory("USER_ES", user_input)
+        save_memory("LELE_EXPORT_ES", result)
+
+        return {
+            "answer": result,
+            "type": "export"
         }
 
     elif trigger_llama:
@@ -84,7 +105,6 @@ def ask_lele(q: Question):
             "type": "gemma"
         }
 
-
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "Lelé v9"}
+    return {"status": "ok", "engine": "Lelé v9 ES"}
