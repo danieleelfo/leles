@@ -7,25 +7,31 @@ la filosofia local-first del progetto. Nota: dal 2025 il progetto
 attivo è OHF-Voice/piper1-gpl, licenza GPL-3.0 (il vecchio repo MIT
 rhasspy/piper è archiviato).
 
-Supporto multi-lingua: Leles risponde in italiano, spagnolo o inglese
-a seconda dell'input, quindi il TTS carica dinamicamente il modello
-Piper giusto per lingua (vedi VOICE_MODELS sotto), invece di un'unica
-voce fissa. Ogni modello viene caricato una sola volta e tenuto in
-cache (_voices), riusato per le sintesi successive nella stessa lingua.
+Supporto multi-lingua: Leles risponde in italiano, spagnolo, inglese,
+francese, olandese, catalano, russo o ucraino a seconda dell'input,
+quindi il TTS carica dinamicamente il modello Piper giusto per lingua
+(vedi VOICE_MODELS sotto), invece di un'unica voce fissa. Ogni modello
+viene caricato una sola volta e tenuto in cache (_voices), riusato per
+le sintesi successive nella stessa lingua.
 
 Setup (una tantum, sul Mac):
     source .venv/bin/activate
     pip install piper-tts
     python3 -m piper.download_voices --download-dir voices it_IT-riccardo-x_low
     python3 -m piper.download_voices --download-dir voices es_ES-davefx-medium
-    python3 -m piper.download_voices --download-dir voices en_US-lessac-medium 
+    python3 -m piper.download_voices --download-dir voices en_US-lessac-medium
+    python3 -m piper.download_voices --download-dir voices fr_FR-tom-medium
+    python3 -m piper.download_voices --download-dir voices nl_BE-nathalie-medium
+    python3 -m piper.download_voices --download-dir voices ca_ES-upc_ona-medium
+    python3 -m piper.download_voices --download-dir voices ru_RU-irina-medium
+    python3 -m piper.download_voices --download-dir voices uk_UA-ukrainian_tts-medium
 
     # serve ffmpeg per convertire il wav in ogg/opus (formato voice-note Telegram)
     brew install ffmpeg
 
-Voci di default: it_IT-riccardo-x_low (italiano) e es_ES-davefx-medium
-(spagnolo, castigliano). Override via env var TTS_VOICE_MODEL_IT /
-TTS_VOICE_MODEL_ES se vuoi cambiarle senza toccare il codice.
+Voci di default sotto in VOICE_MODELS. Override via env var
+TTS_VOICE_MODEL_<LINGUA> (es. TTS_VOICE_MODEL_IT) se vuoi cambiarle
+senza toccare il codice.
 """
 
 import os
@@ -53,7 +59,30 @@ VOICE_MODELS = {
     "it": os.getenv("TTS_VOICE_MODEL_IT", "it_IT-riccardo-x_low"),
     "es": os.getenv("TTS_VOICE_MODEL_ES", "es_ES-davefx-medium"),
     "en": os.getenv("TTS_VOICE_MODEL_EN", "en_US-lessac-medium"),
+    "fr": os.getenv("TTS_VOICE_MODEL_FR", "fr_FR-tom-medium"),
+    "nl": os.getenv("TTS_VOICE_MODEL_NL", "nl_BE-nathalie-medium"),
+    "ca": os.getenv("TTS_VOICE_MODEL_CA", "ca_ES-upc_ona-medium"),
+    "ru": os.getenv("TTS_VOICE_MODEL_RU", "ru_RU-irina-medium"),
+    "uk": os.getenv("TTS_VOICE_MODEL_UK", "uk_UA-ukrainian_tts-medium"),
 }
+
+# Etichette leggibili per la caption del vocale su Telegram — mostrano
+# all'utente quale/i lingua/e ha usato Lelé per la sintesi vocale.
+LANG_LABELS = {
+    "it": "🇮🇹 Italiano",
+    "es": "🇪🇸 Español",
+    "en": "🇬🇧 English",
+    "fr": "🇫🇷 Français",
+    "nl": "🇳🇱 Nederlands",
+    "ca": "🏴 Català",
+    "ru": "🇷🇺 Русский",
+    "uk": "🇺🇦 Українська",
+}
+
+
+def _format_lang_label(langs: list[str]) -> str:
+    """Costruisce una didascalia leggibile dalle lingue usate, es. '🇮🇹 Italiano + 🇬🇧 English'."""
+    return " + ".join(LANG_LABELS.get(l, l.upper()) for l in langs)
 
 TTS_TMP_DIR = os.getenv("TTS_TMP_DIR", "tmp_tts")
 os.makedirs(TTS_TMP_DIR, exist_ok=True)
@@ -197,12 +226,17 @@ def _split_into_lang_segments(text: str) -> list[tuple[str, str]]:
     return segments
 
 
-def synthesize_multilang_to_ogg(text: str) -> str:
+def synthesize_multilang_to_ogg(text: str) -> tuple[str, str]:
     """
     Come synthesize_to_ogg, ma rileva la lingua per ogni segmento del
     testo e usa la voce Piper corrispondente per ciascuno, invece di
     leggere tutto con una sola voce. Utile quando la risposta mescola
     più lingue (dialetto + traduzione tra parentesi, code-switching).
+
+    Ritorna (ogg_path, lang_label): lang_label è una stringa leggibile
+    con le lingue effettivamente usate nella sintesi (es. "🇮🇹 Italiano
+    + 🇬🇧 English"), pensata per essere passata come caption a
+    reply_voice() su Telegram.
     """
     clean_text = _strip_for_speech(text)
 
@@ -210,6 +244,8 @@ def synthesize_multilang_to_ogg(text: str) -> str:
         raise ValueError("Testo vuoto dopo la pulizia: niente da sintetizzare.")
 
     segments = _split_into_lang_segments(clean_text)
+    langs_used = list(dict.fromkeys(lang for lang, _ in segments))
+    lang_label = _format_lang_label(langs_used)
 
     file_id = uuid.uuid4().hex
     wav_paths = []
@@ -256,7 +292,7 @@ def synthesize_multilang_to_ogg(text: str) -> str:
                 f"ffmpeg concat failed: {result.stderr.decode(errors='ignore')}"
             )
 
-        return ogg_path
+        return ogg_path, lang_label
 
     finally:
         for wp in wav_paths:

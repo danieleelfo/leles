@@ -168,13 +168,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if send_voice:
             ogg_out_path = None
             try:
-                ogg_out_path = await loop.run_in_executor(
+                ogg_out_path, lang_label = await loop.run_in_executor(
                     None,
                     lambda: synthesize_multilang_to_ogg(answer)
                 )
 
                 with open(ogg_out_path, "rb") as voice_out:
-                    await update.message.reply_voice(voice=voice_out)
+                    await update.message.reply_voice(voice=voice_out, caption=f"🌍 {lang_label}")
 
             finally:
                 if ogg_out_path and os.path.exists(ogg_out_path):
@@ -269,12 +269,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- STEP 3: rispondi con un vocale (fallback a testo se il TTS fallisce) ---
     ogg_out_path = None
     try:
-        ogg_out_path = await loop.run_in_executor(
+        ogg_out_path, lang_label = await loop.run_in_executor(
             None,
             lambda: synthesize_multilang_to_ogg(answer)
         )
         with open(ogg_out_path, "rb") as voice_out:
-            await update.message.reply_voice(voice=voice_out)
+            await update.message.reply_voice(voice=voice_out, caption=f"🌍 {lang_label}")
     except Exception as e:
         logger.error(f"TTS fallito per {chat_id}, rispondo solo in testo: {e}")
         await update.message.reply_text(answer)
