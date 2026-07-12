@@ -56,7 +56,7 @@ MAX_SEGMENTS = 15      # tetto di sicurezza: troppi segmenti = troppa latenza
 VOICE_MODEL_DIR = os.getenv("TTS_VOICE_MODEL_DIR", "voices")
 
 VOICE_MODELS = {
-    "it": os.getenv("TTS_VOICE_MODEL_IT", "it_IT-riccardo-x_low"),
+    "it": os.getenv("TTS_VOICE_MODEL_IT", "it_IT-paola-medium"),
     "es": os.getenv("TTS_VOICE_MODEL_ES", "es_ES-davefx-medium"),
     "en": os.getenv("TTS_VOICE_MODEL_EN", "en_US-lessac-medium"),
     "fr": os.getenv("TTS_VOICE_MODEL_FR", "fr_FR-tom-medium"),
