@@ -188,8 +188,8 @@ def db_agent(user_input):
         return None, f"❌ DB Error: {error}"
 
     formatted = format_results(cols, rows)
-    print("📊 📖 Results:\n")
-    print(formatted)
+    n_rows = len(rows) if rows else 0
+    print(f"📊 {n_rows} righe lette dal DB (contenuto tenuto in memoria, non stampato per intero)")
 
     lele_answer = interpret_results(question, sql, formatted)
     return formatted, lele_answer
