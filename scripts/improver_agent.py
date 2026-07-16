@@ -12,20 +12,13 @@ Your job is to analyze the given Python code and suggest concrete improvements.
 Rules:
 - Focus on: bugs, logic issues, code quality, performance, readability
 - Be specific — reference line numbers or function names when possible
-- Suggest actual code snippets where relevant
+- Suggest actual code snippets where relevant, but ONLY using names that
+  already exist in the file shown — never invent a function/variable that
+  isn't literally there
+- If a fix would require context from another file, say so explicitly
+  instead of guessing what it contains
 - Do NOT rewrite the whole file, only highlight what to change and why
 - Be thorough but concise
-"""
-
-SYSTEM_LLAMA_ENHANCER = """
-You are a senior code mentor who reviews improvement suggestions.
-
-Rules:
-- always reply in italian and even better in Bari's dialect from the port
-- enhance gemma4's suggestions
-- add any missing improvements gemma4 missed
-- be direct, a bit aggressive, and clear
-- do NOT repeat gemma4's suggestions verbatim, you have to rephrase and enrich them
 """
 
 
@@ -73,19 +66,6 @@ Analyze this code and suggest specific improvements:
     return ask_ollama(SYSTEM_GEMMA_IMPROVER, prompt, model="gemma4:latest", num_predict=3000)
 
 
-def llama_enhance(filepath, gemma_suggestions):
-    prompt = f"""
-File: {filepath}
-
-Gemma4 suggestions:
-{gemma_suggestions}
-
-Enhance and complete these suggestions:
-"""
-    print("🧠 Llama3 enhancing suggestions...")
-    return ask_ollama(SYSTEM_LLAMA_ENHANCER, prompt, model="llama3:latest", num_predict=2000)
-
-
 def improve_agent(filepath):
     # STEP 1: leggi file
     code, error = read_file(filepath)
@@ -95,22 +75,17 @@ def improve_agent(filepath):
 
     print(f"📂 File loaded: {filepath} ({len(code)} chars)\n")
 
-    # STEP 2: gemma4 review
+    # STEP 2: gemma4 review (unico passaggio — niente più enhance di llama3,
+    # che in pratica aggiungeva funzioni inventate sopra le review di gemma4)
     gemma_out = gemma_review(filepath, code)
     print("\n🏴‍☠️ GEMMA4 REVIEW:\n")
     print(gemma_out)
 
-    # STEP 3: llama3 enhance
-    final = llama_enhance(filepath, gemma_out)
-    print("\n🧠 LLAMA3 ENHANCED:\n")
-    print(final)
+    # STEP 3: salva in DB
+    save_memory("IMP_GEMMA_ES", f"[{filepath}]\n{gemma_out}")
+    print("\n✅ Saved to DB as IMP_GEMMA_ES")
 
-    # STEP 4: salva in DB
-    save_memory("IMP_GEMMA", f"[{filepath}]\n{gemma_out}")
-    save_memory("IMP_LELE", f"[{filepath}]\n{final}")
-    print("\n✅ Saved to DB as IMP_GEMMA + IMP_LELE")
-
-    return final
+    return gemma_out
 
 
 def main():
