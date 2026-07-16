@@ -52,7 +52,12 @@ def ask_lele(q: Question):
     trigger_export = user_input.lower().startswith("esporta")
     trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
     
-    print(f"EXPORT = {user_input.lower().startswith('esporta')}")
+    print(
+        f"EXPORT = {trigger_export} | "
+        f"DB = {trigger_db} | "
+        f"LLAMA = {trigger_llama} | "
+        f"IMPROVE = {trigger_improve}"
+    )
 
     # IMPROVE — disabilitato via Telegram per sicurezza (modifica file locali)
     if trigger_improve:
