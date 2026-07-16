@@ -69,14 +69,14 @@ async def check_and_increment(chat_id: int) -> tuple[bool, int]:
         entry["count"] += 1
         return True, MAX_QUESTIONS_PER_DAY - entry["count"]
         
-async def ask_lele(message: str) -> str:
+async def ask_lele(message: str, chat_id: int) -> str:
     """
     Invia una richiesta al motore Lelé e restituisce la risposta.
     """
     async with httpx.AsyncClient(timeout=620) as client:
         response = await client.post(
             LELE_API_URL,
-            json={"message": message},
+            json={"message": message, "chat_id": chat_id},
         )
         response.raise_for_status()
 
@@ -140,7 +140,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thinking_msg = await update.message.reply_text("🏴‍☠️ Lelé sta pensando... Aspé... 🌊 🏴‍☠️ ")
 
     try:
-        answer = await ask_lele(message)
+        answer = await ask_lele(message, chat_id)
         if len(answer) > 4000:
             answer = answer[:4000] + "\n\n... (troncato)"
 
@@ -233,7 +233,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transcribed_text = await loop.run_in_executor(
             None,
             lambda: transcribe_audio(
-                ogg_in_path, language="it", initial_prompt=VOICE_INITIAL_PROMPT
+                ogg_in_path, language=None, initial_prompt=VOICE_INITIAL_PROMPT
             ),
         )
 
@@ -254,7 +254,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- STEP 2: instrada il testo trascritto nella stessa pipeline /ask del testo ---
     try:
-        answer = await ask_lele(transcribed_text)
+        answer = await ask_lele(transcribed_text, chat_id)
     except httpx.TimeoutException:
         await update.message.reply_text("⏱️ Lelé ci sta pensando troppo su... riprova.")
         return

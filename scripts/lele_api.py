@@ -30,10 +30,16 @@ from scripts.lele_engine9 import (
 app = FastAPI()
 
 from scripts.export_agent import export_agent
+from scripts.verify_agent import verify_agent
+
+# Deve combaciare con ADMIN_IDS in scripts/leles_bot.py — query/esporta/improve
+# sono comandi di debug/analisi, riservati al capitano.
+ADMIN_IDS = [8733881519]
 
 
 class Question(BaseModel):
     message: str
+    chat_id: int | None = None
 
 
 @app.post("/ask")
@@ -47,27 +53,69 @@ def ask_lele(q: Question):
 
     memory = build_memory_block(load_memory_by_suffix("ES"))
 
+    is_admin = q.chat_id in ADMIN_IDS
+
     trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
+    trigger_verify = user_input.lower().startswith("verifica")
     trigger_export = user_input.lower().startswith("esporta")
     trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
-    
+    trigger_gemma = not (trigger_improve or trigger_verify or trigger_export or trigger_db or trigger_llama)
+
     print(
         f"EXPORT = {trigger_export} | "
         f"DB = {trigger_db} | "
         f"LLAMA = {trigger_llama} | "
-        f"IMPROVE = {trigger_improve}"
+        f"IMPROVE = {trigger_improve} | "
+        f"VERIFY = {trigger_verify} | "
+        f"GEMMA = {trigger_gemma}"
     )
 
-    # IMPROVE — disabilitato via Telegram per sicurezza (modifica file locali)
+    # IMPROVE — riservato al capitano: legge un file e genera suggerimenti
+    # (gemma review + llama enhance), non scrive/modifica mai nulla sul Mac.
     if trigger_improve:
         save_memory("USER_ES", user_input)
+
+        if not is_admin:
+            return {
+                "answer": "🏴‍☠️ Comando riservato al capitano.",
+                "type": "improve_disabled"
+            }
+
+        filepath = user_input[7:].strip()
+        result = improve_agent(filepath)
+        save_memory("LELE_IMPROVE_ES", result or "Nessun suggerimento generato.")
+
         return {
-            "answer": "🏴‍☠️ Il comando IMPROVE è disabilitato via Telegram per motivi di sicurezza (modifica file sul Mac).",
-            "type": "improve_disabled"
+            "answer": result or "Nessun suggerimento generato.",
+            "type": "improve"
+        }
+
+    elif trigger_verify:
+        save_memory("USER_ES", user_input)
+
+        if not is_admin:
+            return {
+                "answer": "🏴‍☠️ Comando riservato al capitano.",
+                "type": "verify_disabled"
+            }
+
+        filepath = user_input[len("verifica"):].strip()
+        result = verify_agent(filepath)
+        save_memory("LELE_VERIFY_ES", result)
+
+        return {
+            "answer": result,
+            "type": "verify"
         }
 
     elif trigger_db:
+        if not is_admin:
+            return {
+                "answer": "🏴‍☠️ Comando riservato al capitano.",
+                "type": "db_disabled"
+            }
+
         formatted, lele_answer = db_agent(user_input)
         save_memory("USER_ES", user_input)
         save_memory("LELE_DB_ES", lele_answer)
@@ -78,6 +126,12 @@ def ask_lele(q: Question):
         }
         
     elif trigger_export:
+        if not is_admin:
+            return {
+                "answer": "🏴‍☠️ Comando riservato al capitano.",
+                "type": "export_disabled"
+            }
+
         print("######## EXPORT AGENT ########")
         print(f"Comando: {user_input}")
 
