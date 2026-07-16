@@ -9,3 +9,4 @@ tmp_tts/
 logs/*.log
 .env
 uvicorn_restart.log
+bot_token.md.pages
