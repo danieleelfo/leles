@@ -51,7 +51,7 @@ def ask_lele(q: Question):
     if not user_input:
         return {"answer": "⚓ Capitano, dimmi qualcosa!", "type": "empty"}
 
-    memory = build_memory_block(load_memory_by_suffix("ES"))
+    memory = build_memory_block(load_memory_by_suffix("ES", chat_id=q.chat_id))
 
     is_admin = q.chat_id in ADMIN_IDS
 
@@ -74,7 +74,7 @@ def ask_lele(q: Question):
     # IMPROVE — riservato al capitano: legge un file e genera suggerimenti
     # (gemma review + llama enhance), non scrive/modifica mai nulla sul Mac.
     if trigger_improve:
-        save_memory("USER_ES", user_input)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
 
         if not is_admin:
             return {
@@ -84,7 +84,7 @@ def ask_lele(q: Question):
 
         filepath = user_input[7:].strip()
         result = improve_agent(filepath)
-        save_memory("LELE_IMPROVE_ES", result or "Nessun suggerimento generato.")
+        save_memory("LELE_IMPROVE_ES", result or "Nessun suggerimento generato.", chat_id=q.chat_id)
 
         return {
             "answer": result or "Nessun suggerimento generato.",
@@ -92,7 +92,7 @@ def ask_lele(q: Question):
         }
 
     elif trigger_verify:
-        save_memory("USER_ES", user_input)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
 
         if not is_admin:
             return {
@@ -102,7 +102,7 @@ def ask_lele(q: Question):
 
         filepath = user_input[len("verifica"):].strip()
         result = verify_agent(filepath)
-        save_memory("LELE_VERIFY_ES", result)
+        save_memory("LELE_VERIFY_ES", result, chat_id=q.chat_id)
 
         return {
             "answer": result,
@@ -117,8 +117,8 @@ def ask_lele(q: Question):
             }
 
         formatted, lele_answer = db_agent(user_input)
-        save_memory("USER_ES", user_input)
-        save_memory("LELE_DB_ES", lele_answer)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        save_memory("LELE_DB_ES", lele_answer, chat_id=q.chat_id)
         return {
             "answer": lele_answer,
             "data": formatted,
@@ -137,8 +137,8 @@ def ask_lele(q: Question):
 
         result = export_agent(user_input)
 
-        save_memory("USER_ES", user_input)
-        save_memory("LELE_EXPORT_ES", result)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        save_memory("LELE_EXPORT_ES", result, chat_id=q.chat_id)
 
         return {
             "answer": result,
@@ -146,19 +146,19 @@ def ask_lele(q: Question):
         }
 
     elif trigger_llama:
-        last_gemma = get_memory_by_role("GEMMA_ES")
-        final = llama_reviewer(user_input, last_gemma)
-        save_memory("USER_ES", user_input)
-        save_memory("LELE_ES", final)
+        last_gemma = get_memory_by_role("GEMMA_ES", chat_id=q.chat_id)
+        final = llama_reviewer(user_input, last_gemma, chat_id=q.chat_id)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        save_memory("LELE_ES", final, chat_id=q.chat_id)
         return {
             "answer": final,
             "type": "llama_review"
         }
 
     else:
-        gemma_out = gemma_agent(memory, user_input)
-        save_memory("USER_ES", user_input)
-        save_memory("GEMMA_ES", gemma_out)
+        gemma_out = gemma_agent(memory, user_input, chat_id=q.chat_id)
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        save_memory("GEMMA_ES", gemma_out, chat_id=q.chat_id)
         return {
             "answer": gemma_out,
             "type": "gemma"

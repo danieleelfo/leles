@@ -2,13 +2,13 @@ from core.db import get_connection
 
 
 # 💾 SALVA MEMORIA
-def save_memory(role, content):
+def save_memory(role, content, chat_id=None):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute(
-        "INSERT INTO memory (role, content) VALUES (%s, %s)",
-        (role, content)
+        "INSERT INTO memory (role, content, chat_id) VALUES (%s, %s, %s)",
+        (role, content, chat_id)
     )
 
     conn.commit()
@@ -17,16 +17,25 @@ def save_memory(role, content):
 
 
 # 📥 CARICA MEMORIA (ULTIMI N MESSAGGI)
-def load_memory(limit=200):
+def load_memory(limit=200, chat_id=None):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT role, content
-        FROM memory
-        ORDER BY created_at DESC
-        LIMIT %s
-    """, (limit,))
+    if chat_id is not None:
+        cur.execute("""
+            SELECT role, content
+            FROM memory
+            WHERE chat_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (chat_id, limit))
+    else:
+        cur.execute("""
+            SELECT role, content
+            FROM memory
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (limit,))
 
     rows = cur.fetchall()
 
@@ -38,17 +47,26 @@ def load_memory(limit=200):
 
     # formato leggibile per LLM
     return "\n".join([f"{r[0]}: {r[1]}" for r in rows])
-def get_memory_by_role(role, limit=1):
+def get_memory_by_role(role, limit=1, chat_id=None):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT content
-        FROM memory
-        WHERE role = %s
-        ORDER BY created_at DESC
-        LIMIT %s
-    """, (role, limit))
+    if chat_id is not None:
+        cur.execute("""
+            SELECT content
+            FROM memory
+            WHERE role = %s AND chat_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (role, chat_id, limit))
+    else:
+        cur.execute("""
+            SELECT content
+            FROM memory
+            WHERE role = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (role, limit))
 
     rows = cur.fetchall()
 
@@ -61,17 +79,26 @@ def get_memory_by_role(role, limit=1):
     # se limit=1 → ritorna stringa diretta
     return rows[0][0] if limit == 1 else [r[0] for r in rows]
 
-def load_memory_by_suffix(suffix, limit=20):
+def load_memory_by_suffix(suffix, limit=20, chat_id=None):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT role, content
-        FROM memory
-        WHERE role LIKE %s ESCAPE '\\'
-        ORDER BY created_at DESC
-        LIMIT %s
-    """, (f"%\\_{suffix}", limit))
+    if chat_id is not None:
+        cur.execute("""
+            SELECT role, content
+            FROM memory
+            WHERE role LIKE %s ESCAPE '\\' AND chat_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (f"%\\_{suffix}", chat_id, limit))
+    else:
+        cur.execute("""
+            SELECT role, content
+            FROM memory
+            WHERE role LIKE %s ESCAPE '\\'
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (f"%\\_{suffix}", limit))
 
     rows = cur.fetchall()
 
@@ -82,7 +109,7 @@ def load_memory_by_suffix(suffix, limit=20):
 
     return "\n".join([f"{r[0]}: {r[1]}" for r in rows])
 
-def load_memory_structured(limit=200):
+def load_memory_structured(limit=200, chat_id=None):
     """
     Come load_memory(), ma ritorna dati strutturati (id/role/content/
     timestamp reali) invece di stringhe pre-formattate. Serve a
@@ -92,12 +119,21 @@ def load_memory_structured(limit=200):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT id, role, content, created_at
-        FROM memory
-        ORDER BY created_at DESC
-        LIMIT %s
-    """, (limit,))
+    if chat_id is not None:
+        cur.execute("""
+            SELECT id, role, content, created_at
+            FROM memory
+            WHERE chat_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (chat_id, limit))
+    else:
+        cur.execute("""
+            SELECT id, role, content, created_at
+            FROM memory
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (limit,))
 
     rows = cur.fetchall()
 

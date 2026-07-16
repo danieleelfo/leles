@@ -97,14 +97,14 @@ def ask_model(model, prompt, retries=2):
 
 
 # 🏴‍☠️ GEMMA CORE
-def gemma_agent(memory, user_input):
+def gemma_agent(memory, user_input, chat_id=None):
 
     mem_context = ""
 
     if "id" in user_input.lower():
         try:
             mem_id = int(user_input.lower().split("id")[1].strip())
-            rows = load_memory_structured(limit=200)
+            rows = load_memory_structured(limit=200, chat_id=chat_id)
             match = next(
                 (r for r in rows if r["id"] == mem_id and r["role"].endswith("_ES")),
                 None
@@ -115,7 +115,7 @@ def gemma_agent(memory, user_input):
 
     elif "search" in user_input.lower():
         keyword = user_input.lower().replace("search", "").strip()
-        rows = load_memory_structured(limit=200)
+        rows = load_memory_structured(limit=200, chat_id=chat_id)
         matches = [
             f"{r['role']}: {r['content']}"
             for r in rows
@@ -139,7 +139,7 @@ Answer:
     return ask_model("gemma4:latest", prompt)
 
 # 🧠 LLAMA REVIEWER
-def llama_reviewer(user_input, gemma_output):
+def llama_reviewer(user_input, gemma_output, chat_id=None):
 
     if not gemma_output or "EMPTY" in gemma_output or gemma_output == "":
         return gemma_output
@@ -254,7 +254,7 @@ def main():
             save_memory("LELE_ES", final)
 
         else:
-            gemma_out = gemma_agent(memory, user_input)
+            gemma_out = gemma_agent(memory, user_input, chat_id=None)
             print("\n🏴‍☠️ GEMMA4:\n")
             print(gemma_out)
             save_memory("USER_ES", user_input)
