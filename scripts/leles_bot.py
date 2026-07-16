@@ -5,6 +5,8 @@ Versione Ottimizzata (Async & Thread-Safe) ES
 """
 
 import os
+import sys
+import subprocess
 import httpx
 import logging
 import asyncio
@@ -31,6 +33,10 @@ if not TELEGRAM_TOKEN:
 MAX_QUESTIONS_PER_DAY = 500
 ADMIN_IDS = [8733881519]  # Il tuo Chat ID con superpoteri
 MAX_VOICE_DURATION = 5 * 60  # 5 minuti (solo utenti normali)
+
+# Root del progetto (cartella che contiene scripts/), usata da "pull"/"restart"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+API_PORT = os.getenv("LELE_API_PORT", "8082")
 
 # Cartella temporanea per i vocali in arrivo (cancellati subito dopo la trascrizione)
 VOICE_TMP_DIR = os.getenv("VOICE_TMP_DIR", "tmp_voice_in")
@@ -103,11 +109,71 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
+async def handle_pull(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    'pull report leles' — fa git pull sul repo e manda l'output com'è.
+    Solo admin. Uvicorn gira con --reload, quindi l'API si aggiorna da
+    sola non appena i file cambiano — non serve riavviarla per questo.
+    """
+    await update.message.reply_text("📥 Pull in corso...")
+
+    result = subprocess.run(
+        ["git", "pull"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    output = (result.stdout + result.stderr).strip() or "(nessun output)"
+    if len(output) > 3500:
+        output = output[:3500] + "\n... (troncato)"
+
+    prefix = "✅" if result.returncode == 0 else "❌"
+    await update.message.reply_text(f"{prefix} Pull terminato:\n\n{output}")
+
+
+async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    'restart Lelé' — riavvia sia uvicorn (kill + rilancio detached) sia
+    questo stesso processo bot (self-exec). Solo admin.
+    """
+    await update.message.reply_text("🔄 Riavvio Lelé in corso, torno subito...")
+
+    # 1. Uccidi l'istanza uvicorn attuale (best-effort, ignora se non gira)
+    subprocess.run(["pkill", "-f", "uvicorn scripts.lele_api"], check=False)
+    await asyncio.sleep(1)
+
+    # 2. Rilancia uvicorn come processo indipendente (sopravvive al riavvio del bot)
+    log_path = os.path.join(PROJECT_ROOT, "uvicorn_restart.log")
+    with open(log_path, "a") as logfile:
+        subprocess.Popen(
+            ["uvicorn", "scripts.lele_api:app", "--reload", "--port", API_PORT],
+            cwd=PROJECT_ROOT,
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,  # non muore quando il bot fa execv sotto
+        )
+
+    # 3. Riavvia questo stesso processo bot (execv sostituisce il processo
+    #    corrente rileggendo lo script da disco — quindi prende il codice
+    #    appena pullato, non serve altro)
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
     message = update.message.text
+
+    if chat_id in ADMIN_IDS:
+        if message.lower().startswith("pull report"):
+            await handle_pull(update, context)
+            return
+        if message.lower().startswith("restart"):
+            await handle_restart(update, context)
+            return
 
     loop = asyncio.get_running_loop()
 

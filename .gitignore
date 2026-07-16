@@ -8,3 +8,4 @@ tmp_tts/
 *.ogg
 logs/*.log
 .env
+uvicorn_restart.log
