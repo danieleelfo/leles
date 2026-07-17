@@ -57,9 +57,9 @@ def ask_lele(q: Question):
 
     trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
-    trigger_verify = user_input.lower().startswith("verifica")
-    trigger_export = user_input.lower().startswith("esporta")
-    trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica"])
+    trigger_verify = user_input.lower().startswith("verifica", "verify")
+    trigger_export = user_input.lower().startswith("esporta", "esport", "export")
+    trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica", "pirata"])
     trigger_gemma = not (trigger_improve or trigger_verify or trigger_export or trigger_db or trigger_llama)
 
     print(
@@ -116,6 +116,7 @@ def ask_lele(q: Question):
                 "type": "db_disabled"
             }
 
+        print("######## DB AGENT ########")
         formatted, lele_answer = db_agent(user_input)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("LELE_DB_ES", lele_answer, chat_id=q.chat_id)
@@ -146,6 +147,7 @@ def ask_lele(q: Question):
         }
 
     elif trigger_llama:
+        print("######## LELÉ AGENT ########")
         last_gemma = get_memory_by_role("GEMMA_ES", chat_id=q.chat_id)
         final = llama_reviewer(user_input, last_gemma, chat_id=q.chat_id)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
@@ -156,6 +158,7 @@ def ask_lele(q: Question):
         }
 
     else:
+        print("######## GEMMA AGENT ########")
         gemma_out = gemma_agent(memory, user_input, chat_id=q.chat_id)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("GEMMA_ES", gemma_out, chat_id=q.chat_id)
