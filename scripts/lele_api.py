@@ -4,8 +4,9 @@ lele_api.py — Wrapper FastAPI per Lele Engine v9.
 Esegui dalla cartella principale del progetto Lelé (stessa cartella di lele_engine9.py):
     uvicorn lele_api:app --reload --port 8001
 
-Replica la logica del dispatcher di main() in lele_engine9.py,
-ma esposta come endpoint HTTP /ask invece del loop input().
+Il routing (quale agente gestisce quale messaggio) è delegato al
+Timoniere (scripts/timoniere.py) — qui restano solo l'esecuzione di
+ogni agente e il salvataggio in memoria del risultato.
 """
 
 from fastapi import FastAPI
@@ -25,21 +26,53 @@ from scripts.lele_engine9 import (
     llama_reviewer,
     db_agent,
     build_memory_block,
-    is_query_trigger,
 )
-app = FastAPI()
 
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
+from scripts.git_agent import git_pull, git_status
 
-# Deve combaciare con ADMIN_IDS in scripts/leles_bot.py — query/esporta/improve
-# sono comandi di debug/analisi, riservati al capitano.
+from scripts.timoniere import (
+    route,
+    AGENT_RESTART,
+    AGENT_GIT_PULL,
+    AGENT_GIT_STATUS,
+    AGENT_IMPROVE,
+    AGENT_VERIFY,
+    AGENT_EXPORT,
+    AGENT_QUERY,
+    AGENT_LLAMA,
+    AGENT_GEMMA,
+)
+
+app = FastAPI()
+
+# Deve combaciare con ADMIN_IDS in scripts/leles_bot.py — query/esporta/improve/
+# verifica/git sono comandi di debug/analisi, riservati al capitano.
 ADMIN_IDS = [8733881519]
+
+# Agenti che richiedono privilegi admin (tutti tranne llama/gemma, che
+# restano aperti a tutti gli utenti Leles).
+_ADMIN_ONLY_AGENTS = {
+    AGENT_IMPROVE,
+    AGENT_VERIFY,
+    AGENT_EXPORT,
+    AGENT_QUERY,
+    AGENT_GIT_PULL,
+    AGENT_GIT_STATUS,
+}
 
 
 class Question(BaseModel):
     message: str
     chat_id: int | None = None
+
+
+def _denied(agent_type: str) -> dict:
+    return {
+        "answer": "🏴‍☠️ Comando riservato al capitano.",
+        "type": f"{agent_type}_disabled",
+    }
 
 
 @app.post("/ask")
@@ -51,37 +84,45 @@ def ask_lele(q: Question):
     if not user_input:
         return {"answer": "⚓ Capitano, dimmi qualcosa!", "type": "empty"}
 
-    memory = build_memory_block(load_memory_by_suffix("ES", chat_id=q.chat_id))
-
     is_admin = q.chat_id in ADMIN_IDS
+    agent = route(user_input)
 
-    trigger_db = is_query_trigger(user_input)
-    trigger_improve = user_input.lower().startswith("improve")
-    trigger_verify = user_input.lower().startswith(("verifica", "verify"))
-    trigger_export = user_input.lower().startswith(("esporta", "esport", "export"))
-    trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica", "pirata"])
-    trigger_gemma = not (trigger_improve or trigger_verify or trigger_export or trigger_db or trigger_llama)
+    print(f"TIMONIERE → {agent} (admin={is_admin})")
 
-    print(
-        f"EXPORT = {trigger_export} | "
-        f"DB = {trigger_db} | "
-        f"LLAMA = {trigger_llama} | "
-        f"IMPROVE = {trigger_improve} | "
-        f"VERIFY = {trigger_verify} | "
-        f"GEMMA = {trigger_gemma}"
-    )
+    # I comandi riservati passano tutti dallo stesso check, un solo posto.
+    if agent in _ADMIN_ONLY_AGENTS and not is_admin:
+        return _denied(agent)
 
-    # IMPROVE — riservato al capitano: legge un file e genera suggerimenti
-    # (gemma review + llama enhance), non scrive/modifica mai nulla sul Mac.
-    if trigger_improve:
+    # ---------------------------------------------------------------
+    # PROCESS AGENT (restart) — non eseguibile qui: richiede di agire
+    # sul processo del bot Telegram stesso (os.execv), quindi vive in
+    # leles_bot.py e non dovrebbe mai arrivare fin qui (il bot lo
+    # intercetta prima di chiamare /ask). Se ci arriva comunque, lo
+    # segnaliamo invece di far crashare la richiesta.
+    # ---------------------------------------------------------------
+    if agent == AGENT_RESTART:
+        return {
+            "answer": "🔄 Il restart va lanciato direttamente da Telegram (comando 'restart Lelé'), non tramite /ask.",
+            "type": "restart_unavailable",
+        }
+
+    if agent == AGENT_GIT_PULL:
+        print("######## GIT AGENT (pull) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = git_pull()
+        save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_GIT_PULL}
+
+    if agent == AGENT_GIT_STATUS:
+        print("######## GIT AGENT (status) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = git_status()
+        save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_GIT_STATUS}
+
+    if agent == AGENT_IMPROVE:
         print("######## IMPROVE AGENT ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-
-        if not is_admin:
-            return {
-                "answer": "🏴‍☠️ Comando riservato al capitano.",
-                "type": "improve_disabled"
-            }
 
         filepath = user_input[7:].strip()
         print(f"Filepath: {filepath}")
@@ -90,37 +131,22 @@ def ask_lele(q: Question):
 
         return {
             "answer": result or "Nessun suggerimento generato.",
-            "type": "improve"
+            "type": AGENT_IMPROVE,
         }
 
-    elif trigger_verify:
+    if agent == AGENT_VERIFY:
         print("######## VERIFY AGENT ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-
-        if not is_admin:
-            return {
-                "answer": "🏴‍☠️ Comando riservato al capitano.",
-                "type": "verify_disabled"
-            }
 
         filepath = user_input[len("verifica"):].strip()
         print(f"Filepath: {filepath}")
         result = verify_agent(filepath)
         save_memory("LELE_VERIFY_ES", result, chat_id=q.chat_id)
 
-        return {
-            "answer": result,
-            "type": "verify"
-        }
+        return {"answer": result, "type": AGENT_VERIFY}
 
-    elif trigger_db:
-        if not is_admin:
-            return {
-                "answer": "🏴‍☠️ Comando riservato al capitano.",
-                "type": "db_disabled"
-            }
-
-        print("######## DB AGENT ########")
+    if agent == AGENT_QUERY:
+        print("######## QUERY AGENT ########")
         print(f"Comando: {user_input}")
         formatted, lele_answer = db_agent(user_input)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
@@ -128,16 +154,10 @@ def ask_lele(q: Question):
         return {
             "answer": lele_answer,
             "data": formatted,
-            "type": "db"
+            "type": AGENT_QUERY,
         }
-        
-    elif trigger_export:
-        if not is_admin:
-            return {
-                "answer": "🏴‍☠️ Comando riservato al capitano.",
-                "type": "export_disabled"
-            }
 
+    if agent == AGENT_EXPORT:
         print("######## EXPORT AGENT ########")
         print(f"Comando: {user_input}")
 
@@ -146,33 +166,26 @@ def ask_lele(q: Question):
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("LELE_EXPORT_ES", result, chat_id=q.chat_id)
 
-        return {
-            "answer": result,
-            "type": "export"
-        }
+        return {"answer": result, "type": AGENT_EXPORT}
 
-    elif trigger_llama:
-        print("######## LELÉ AGENT ########")
+    if agent == AGENT_LLAMA:
+        print("######## OLLAMA AGENT (llama review) ########")
         print(f"Comando: {user_input}")
         last_gemma = get_memory_by_role("GEMMA_ES", chat_id=q.chat_id)
         final = llama_reviewer(user_input, last_gemma, chat_id=q.chat_id)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("LELE_ES", final, chat_id=q.chat_id)
-        return {
-            "answer": final,
-            "type": "llama_review"
-        }
+        return {"answer": final, "type": AGENT_LLAMA}
 
-    else:
-        print("######## GEMMA AGENT ########")
-        print(f"Comando: {user_input}")
-        gemma_out = gemma_agent(memory, user_input, chat_id=q.chat_id)
-        save_memory("USER_ES", user_input, chat_id=q.chat_id)
-        save_memory("GEMMA_ES", gemma_out, chat_id=q.chat_id)
-        return {
-            "answer": gemma_out,
-            "type": "gemma"
-        }
+    # AGENT_GEMMA — fallback finale
+    print("######## OLLAMA AGENT (gemma) ########")
+    print(f"Comando: {user_input}")
+    memory = build_memory_block(load_memory_by_suffix("ES", chat_id=q.chat_id))
+    gemma_out = gemma_agent(memory, user_input, chat_id=q.chat_id)
+    save_memory("USER_ES", user_input, chat_id=q.chat_id)
+    save_memory("GEMMA_ES", gemma_out, chat_id=q.chat_id)
+    return {"answer": gemma_out, "type": AGENT_GEMMA}
+
 
 @app.get("/health")
 def health():

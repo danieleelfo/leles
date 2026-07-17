@@ -20,6 +20,8 @@ from tts_engine import synthesize_multilang_to_ogg
 
 from langdetect import detect, LangDetectException
 
+from timoniere import is_restart_trigger
+
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---
 from dotenv import load_dotenv
 load_dotenv()
@@ -78,15 +80,20 @@ async def check_and_increment(chat_id: int) -> tuple[bool, int]:
 AGENT_LABELS = {
     "gemma": "🐐 Gemma 🧜🏻‍♀️",
     "llama_review": "⚓ Lelé reviewer ",
-    "db": "🗄️ DB Agent",
+    "query": "🗄️ Query Agent",
     "export": "📤 Export",
     "improve": "🔧 Improve",
     "verify": "✅ Verify",
+    "git_pull": "📥 Git Agent",
+    "git_status": "🔍 Git Agent",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",
-    "db_disabled": "🗄️ DB Agent ❌",
+    "query_disabled": "🗄️ Query Agent ❌",
     "export_disabled": "📤 Export ❌",
+    "git_pull_disabled": "📥 Git Agent ❌",
+    "git_status_disabled": "🔍 Git Agent ❌",
+    "restart_unavailable": "🔄 Process Agent ⚠️",
 }
 
 
@@ -173,77 +180,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
-async def handle_pull(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    'pull report leles' — fa git pull sul repo e manda l'output com'è.
-    Solo admin. Uvicorn gira con --reload, quindi l'API si aggiorna da
-    sola non appena i file cambiano — non serve riavviarla per questo.
-    """
-    await update.message.reply_text("📥 Pull in corso...")
-
-    result = subprocess.run(
-        ["git", "pull"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-    output = (result.stdout + result.stderr).strip() or "(nessun output)"
-
-    prefix = "✅" if result.returncode == 0 else "❌"
-    await send_long_message(update, f"{prefix} Pull terminato:\n\n{output}")
-
-
-async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    'status leles' — fa git status (branch + modifiche) sul repo.
-    Solo admin. Utile per capire se il Mac ha modifiche locali non
-    committate prima di fare un pull, o su che branch si è.
-    """
-    await update.message.reply_text("🔍 Controllo status...")
-
-    branch_result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    status_result = subprocess.run(
-        ["git", "status", "--short", "--branch"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    log_result = subprocess.run(
-        ["git", "log", "-1", "--oneline"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-
-    branch = branch_result.stdout.strip() or "?"
-    last_commit = log_result.stdout.strip() or "(nessun commit)"
-    status_output = status_result.stdout.strip() or "(nessuna modifica locale)"
-
-    output = (
-        f"🌿 Branch: {branch}\n"
-        f"📌 Ultimo commit: {last_commit}\n\n"
-        f"{status_output}"
-    )
-
-    ok = branch_result.returncode == 0 and status_result.returncode == 0
-    prefix = "✅" if ok else "❌"
-    await send_long_message(update, f"{prefix} Status:\n\n{output}")
-
-
 async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     'restart Lelé' — riavvia sia uvicorn (kill + rilancio detached) sia
     questo stesso processo bot (self-exec). Solo admin.
+
+    Process Agent: a differenza di git pull/status (delegati al Timoniere
+    lato API in git_agent.py), il restart DEVE girare qui — è l'unico
+    processo che può riavviare se stesso via os.execv.
     """
     await update.message.reply_text("🔄 Riavvio Lelé in corso, torno subito...")
 
@@ -275,13 +219,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message.text
 
     if chat_id in ADMIN_IDS:
-        if message.lower().startswith("pull report"):
-            await handle_pull(update, context)
-            return
-        if message.lower().startswith("status leles") or message.lower().startswith("status lele"):
-            await handle_status(update, context)
-            return
-        if message.lower().startswith("restart"):
+        if is_restart_trigger(message):
             await handle_restart(update, context)
             return
 
