@@ -57,8 +57,8 @@ def ask_lele(q: Question):
 
     trigger_db = is_query_trigger(user_input)
     trigger_improve = user_input.lower().startswith("improve")
-    trigger_verify = user_input.lower().startswith("verifica", "verify")
-    trigger_export = user_input.lower().startswith("esporta", "esport", "export")
+    trigger_verify = user_input.lower().startswith(("verifica", "verify"))
+    trigger_export = user_input.lower().startswith(("esporta", "esport", "export"))
     trigger_llama = any(word in user_input.lower() for word in ["edita", "review", "roast", "llama", "llama3", "critica", "pirata"])
     trigger_gemma = not (trigger_improve or trigger_verify or trigger_export or trigger_db or trigger_llama)
 
@@ -74,6 +74,7 @@ def ask_lele(q: Question):
     # IMPROVE — riservato al capitano: legge un file e genera suggerimenti
     # (gemma review + llama enhance), non scrive/modifica mai nulla sul Mac.
     if trigger_improve:
+        print("######## IMPROVE AGENT ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
 
         if not is_admin:
@@ -83,6 +84,7 @@ def ask_lele(q: Question):
             }
 
         filepath = user_input[7:].strip()
+        print(f"Filepath: {filepath}")
         result = improve_agent(filepath)
         save_memory("LELE_IMPROVE_ES", result or "Nessun suggerimento generato.", chat_id=q.chat_id)
 
@@ -92,6 +94,7 @@ def ask_lele(q: Question):
         }
 
     elif trigger_verify:
+        print("######## VERIFY AGENT ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
 
         if not is_admin:
@@ -101,6 +104,7 @@ def ask_lele(q: Question):
             }
 
         filepath = user_input[len("verifica"):].strip()
+        print(f"Filepath: {filepath}")
         result = verify_agent(filepath)
         save_memory("LELE_VERIFY_ES", result, chat_id=q.chat_id)
 
@@ -117,6 +121,7 @@ def ask_lele(q: Question):
             }
 
         print("######## DB AGENT ########")
+        print(f"Comando: {user_input}")
         formatted, lele_answer = db_agent(user_input)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("LELE_DB_ES", lele_answer, chat_id=q.chat_id)
@@ -148,6 +153,7 @@ def ask_lele(q: Question):
 
     elif trigger_llama:
         print("######## LELÉ AGENT ########")
+        print(f"Comando: {user_input}")
         last_gemma = get_memory_by_role("GEMMA_ES", chat_id=q.chat_id)
         final = llama_reviewer(user_input, last_gemma, chat_id=q.chat_id)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
@@ -159,6 +165,7 @@ def ask_lele(q: Question):
 
     else:
         print("######## GEMMA AGENT ########")
+        print(f"Comando: {user_input}")
         gemma_out = gemma_agent(memory, user_input, chat_id=q.chat_id)
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         save_memory("GEMMA_ES", gemma_out, chat_id=q.chat_id)

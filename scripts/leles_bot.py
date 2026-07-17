@@ -75,9 +75,24 @@ async def check_and_increment(chat_id: int) -> tuple[bool, int]:
         entry["count"] += 1
         return True, MAX_QUESTIONS_PER_DAY - entry["count"]
         
-async def ask_lele(message: str, chat_id: int) -> str:
+AGENT_LABELS = {
+    "gemma": "🐐 Gemma 🧜🏻‍♀️",
+    "llama_review": "⚓ Lelé reviewer ",
+    "db": "🗄️ DB Agent",
+    "export": "📤 Export",
+    "improve": "🔧 Improve",
+    "verify": "✅ Verify",
+    "empty": "⚓ Lelé 🏴‍☠️",
+    "improve_disabled": "🔧 Improve",
+    "verify_disabled": "❌ Verify",
+    "db_disabled": "🗄️ DB Agent ❌",
+    "export_disabled": "📤 Export ❌",
+}
+
+
+async def ask_lele(message: str, chat_id: int) -> tuple[str, str]:
     """
-    Invia una richiesta al motore Lelé e restituisce la risposta.
+    Invia una richiesta al motore Lelé e restituisce (risposta, tipo_agente).
     """
     async with httpx.AsyncClient(timeout=620) as client:
         response = await client.post(
@@ -87,7 +102,7 @@ async def ask_lele(message: str, chat_id: int) -> str:
         response.raise_for_status()
 
         data = response.json()
-        return data.get("answer", "🦜 ...")
+        return data.get("answer", "🦜 ..."), data.get("type", "gemma")
 
 
 TELEGRAM_MAX_CHARS = 4000  # margine di sicurezza sotto il limite reale (4096)
@@ -301,7 +316,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thinking_msg = await update.message.reply_text("🏴‍☠️ Lelé sta pensando... Aspé... 🌊 🏴‍☠️ ")
 
     try:
-        answer = await ask_lele(message, chat_id)
+        answer, agent_type = await ask_lele(message, chat_id)
+        agent_label = AGENT_LABELS.get(agent_type, "🏴‍☠️ Lelé")
 
         if chat_id in ADMIN_IDS:
             footer = "\n\n🏴‍☠️ Accesso Admin: Domande illimitate"
@@ -318,14 +334,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             answer_chunks = split_message(answer, max_len=TELEGRAM_MAX_CHARS - 20)
             total = len(answer_chunks)
             for i, chunk in enumerate(answer_chunks, start=1):
-                label = f"[{i}/{total}]\n" if total > 1 else ""
+                label = f"<b>{escape(agent_label)}</b> [{i}/{total}]\n" if total > 1 else f"<b>{escape(agent_label)}</b>\n"
                 tail = footer if i == total else ""
                 full_message = f"{label}<pre>{escape(chunk)}</pre>{tail}"
                 await update.message.reply_text(full_message, parse_mode="HTML")
                 if i < total:
                     await asyncio.sleep(0.3)
         else:
-            await send_long_message(update, answer + footer, parse_mode=None)
+            await send_long_message(update, f"{agent_label}\n\n{answer}{footer}", parse_mode=None)
         
         if send_voice:
             ogg_out_path = None
@@ -336,7 +352,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
                 with open(ogg_out_path, "rb") as voice_out:
-                    await update.message.reply_voice(voice=voice_out, caption=f"🌍 {lang_label}")
+                    await update.message.reply_voice(voice=voice_out, caption=f"{agent_label} · 🌍 {lang_label}")
 
             finally:
                 if ogg_out_path and os.path.exists(ogg_out_path):
@@ -416,7 +432,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- STEP 2: instrada il testo trascritto nella stessa pipeline /ask del testo ---
     try:
-        answer = await ask_lele(transcribed_text, chat_id)
+        answer, agent_type = await ask_lele(transcribed_text, chat_id)
+        agent_label = AGENT_LABELS.get(agent_type, "🏴‍☠️ Lelé")
     except httpx.TimeoutException:
         await update.message.reply_text("⏱️ Lelé ci sta pensando troppo su... riprova.")
         return
@@ -436,10 +453,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lambda: synthesize_multilang_to_ogg(answer)
         )
         with open(ogg_out_path, "rb") as voice_out:
-            await update.message.reply_voice(voice=voice_out, caption=f"🌍 {lang_label}")
+            await update.message.reply_voice(voice=voice_out, caption=f"{agent_label} · 🌍 {lang_label}")
     except Exception as e:
         logger.error(f"TTS fallito per {chat_id}, rispondo solo in testo: {e}")
-        await update.message.reply_text(answer)
+        await send_long_message(update, f"{agent_label}\n\n{answer}")
     finally:
         if ogg_out_path and os.path.exists(ogg_out_path):
             os.remove(ogg_out_path)
