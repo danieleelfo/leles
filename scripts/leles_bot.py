@@ -90,6 +90,49 @@ async def ask_lele(message: str, chat_id: int) -> str:
         return data.get("answer", "🦜 ...")
 
 
+TELEGRAM_MAX_CHARS = 4000  # margine di sicurezza sotto il limite reale (4096)
+
+
+def split_message(text: str, max_len: int = TELEGRAM_MAX_CHARS) -> list[str]:
+    """
+    Spezza un testo lungo in più blocchi <= max_len, tagliando su un
+    a-capo quando possibile per non spaccare righe/entry YAML a metà.
+    Se un singolo "paragrafo" supera comunque max_len, lo taglia secco.
+    """
+    if len(text) <= max_len:
+        return [text]
+
+    chunks = []
+    remaining = text
+
+    while len(remaining) > max_len:
+        cut = remaining.rfind("\n", 0, max_len)
+        if cut <= 0:
+            cut = max_len  # nessun a-capo utile, taglio secco
+        chunks.append(remaining[:cut])
+        remaining = remaining[cut:].lstrip("\n")
+
+    if remaining:
+        chunks.append(remaining)
+
+    return chunks
+
+
+async def send_long_message(update: Update, text: str, parse_mode=None):
+    """
+    Manda `text` come uno o più messaggi Telegram, spezzandolo se supera
+    il limite di caratteri, invece di troncarlo silenziosamente.
+    """
+    chunks = split_message(text)
+    total = len(chunks)
+
+    for i, chunk in enumerate(chunks, start=1):
+        prefix = f"[{i}/{total}]\n" if total > 1 else ""
+        await update.message.reply_text(prefix + chunk, parse_mode=parse_mode)
+        if i < total:
+            await asyncio.sleep(0.3)  # non intasare l'API Telegram
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     welcome_text = "🏴‍☠️ *Lelé Engine* è online! Spara!\n\n"
@@ -207,29 +250,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         answer = await ask_lele(message, chat_id)
-        if len(answer) > 4000:
-            answer = answer[:4000] + "\n\n... (troncato)"
 
         if chat_id in ADMIN_IDS:
             footer = "\n\n🏴‍☠️ Accesso Admin: Domande illimitate"
         else:
             footer = f"\n\n({remaining} domande rimaste oggi)" if remaining > 0 else "\n\n(ultima domanda di oggi)"
 
-        if "|" in answer or "---" in answer:
-            from html import escape
-            safe_answer = escape(answer)
-            full_message = f"<pre>{safe_answer}</pre>{footer}"
-            parse_mode_to_use = "HTML"
-        else:
-            full_message = answer + footer
-            parse_mode_to_use = None
-
         try:
             await thinking_msg.delete()
         except Exception:
             pass
 
-        await update.message.reply_text(full_message, parse_mode=parse_mode_to_use)
+        if "|" in answer or "---" in answer:
+            from html import escape
+            answer_chunks = split_message(answer, max_len=TELEGRAM_MAX_CHARS - 20)
+            total = len(answer_chunks)
+            for i, chunk in enumerate(answer_chunks, start=1):
+                label = f"[{i}/{total}]\n" if total > 1 else ""
+                tail = footer if i == total else ""
+                full_message = f"{label}<pre>{escape(chunk)}</pre>{tail}"
+                await update.message.reply_text(full_message, parse_mode="HTML")
+                if i < total:
+                    await asyncio.sleep(0.3)
+        else:
+            await send_long_message(update, answer + footer, parse_mode=None)
         
         if send_voice:
             ogg_out_path = None

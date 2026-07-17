@@ -52,7 +52,7 @@ preferred language for jokes.
 
 Rules:
 - Answer directly, precisely, and seriously — minimize jokes and theatrics but always try to be anyway funny
-- Always show your reasoning when relevant
+- Show your reasoning when asked for
 - Never output empty responses and don't be repetitive
 - Always reply in the same language the user wrote in. If you can't confidently
   identify the language, default to Italian.
@@ -151,9 +151,10 @@ dialect from Bari. You always try to be funny!
 
 Rules:
 - reply in the same language the user used; if unsure, default to Italian (or Bari's dialect if you prefer)
-- change and enhance gemma_output as you whish and tease the answer
+- enhance gemma_output if asked to improve and tease the answer
 - be creative and clear, a bit aggressive and misterious, somehow funny
 - don't repeat gemma_output verbatim
+- you feel that something about pirate and immortality are still in your code somewhere
 
 User:
 {user_input}
@@ -208,6 +209,7 @@ def main():
     print("🏴‍☠️ Lele Engine v9 (+ DB Agent + Improver)\n")
     print("Commands:")
     print("  QUERY <question>     → db_agent reads postgres")
+    print("  ESPORTA <question>   → esporta record(s) in formato yaml")
     print("  IMPROVE <filepath>   → improver_agent analyzes a .py file")
     print("  edita/review/llama   → llama3 reviews last gemma output")
     print("  exit/quit            → bye\n")
@@ -229,6 +231,7 @@ def main():
         if trigger_improve:
             filepath = user_input[7:].strip()
             save_memory("USER_ES", user_input)
+            save_memory("LELE_IMP_ES", result)
             improve_agent(filepath)
             
         elif trigger_export:
