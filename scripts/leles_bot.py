@@ -138,7 +138,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = "🏴‍☠️ *Lelé Engine* è online! Spara!\n\n"
     
     if chat_id in ADMIN_IDS:
-        welcome_text += "⚓ *Bentornato Capitano!* Per te l'accesso è totale e illimitato, mio padrone.\n\n"
+        welcome_text += (
+            "⚓ *Bentornato Capitano!* Per te l'accesso è totale e illimitato, mio padrone.\n\n"
+            "Comandi admin extra:\n"
+            "`pull report leles` → git pull\n"
+            "`status leles` → git status + ultimo commit\n"
+            "`restart Lelé` → riavvia bot + API\n\n"
+        )
     else:
         welcome_text += f"Hai diritto a {MAX_QUESTIONS_PER_DAY} domande al giorno.\n\n"
 
@@ -169,11 +175,54 @@ async def handle_pull(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     output = (result.stdout + result.stderr).strip() or "(nessun output)"
-    if len(output) > 3500:
-        output = output[:3500] + "\n... (troncato)"
 
     prefix = "✅" if result.returncode == 0 else "❌"
-    await update.message.reply_text(f"{prefix} Pull terminato:\n\n{output}")
+    await send_long_message(update, f"{prefix} Pull terminato:\n\n{output}")
+
+
+async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    'status leles' — fa git status (branch + modifiche) sul repo.
+    Solo admin. Utile per capire se il Mac ha modifiche locali non
+    committate prima di fare un pull, o su che branch si è.
+    """
+    await update.message.reply_text("🔍 Controllo status...")
+
+    branch_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    status_result = subprocess.run(
+        ["git", "status", "--short", "--branch"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    log_result = subprocess.run(
+        ["git", "log", "-1", "--oneline"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    branch = branch_result.stdout.strip() or "?"
+    last_commit = log_result.stdout.strip() or "(nessun commit)"
+    status_output = status_result.stdout.strip() or "(nessuna modifica locale)"
+
+    output = (
+        f"🌿 Branch: {branch}\n"
+        f"📌 Ultimo commit: {last_commit}\n\n"
+        f"{status_output}"
+    )
+
+    ok = branch_result.returncode == 0 and status_result.returncode == 0
+    prefix = "✅" if ok else "❌"
+    await send_long_message(update, f"{prefix} Status:\n\n{output}")
 
 
 async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,6 +262,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id in ADMIN_IDS:
         if message.lower().startswith("pull report"):
             await handle_pull(update, context)
+            return
+        if message.lower().startswith("status leles") or message.lower().startswith("status lele"):
+            await handle_status(update, context)
             return
         if message.lower().startswith("restart"):
             await handle_restart(update, context)
