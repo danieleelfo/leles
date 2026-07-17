@@ -88,7 +88,7 @@ Verifica logica di questo file, seguendo rigorosamente le regole del system prom
                 "stream": False,
                 "options": {
                     "temperature": 0.1,  # bassa: meno creatività, meno invenzioni
-                    "num_predict": 1500,
+                    "num_predict": 4000,
                 },
             },
             timeout=180,

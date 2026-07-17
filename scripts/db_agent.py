@@ -70,17 +70,28 @@ SQL:
 
 
 def execute_sql(sql):
+    """
+    Nota: `with conn:` in psycopg2 gestisce SOLO commit/rollback della
+    transazione, NON chiude la connessione — per quello serve un
+    conn.close() esplicito in un finally, altrimenti un'eccezione a
+    metà (es. SQL malformato) lascia la connessione aperta per sempre,
+    saturando piano piano il pool Postgres su un bot che gira 24/7.
+    """
     try:
         conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(sql)
-        rows = cur.fetchall()
-        cols = [desc[0] for desc in cur.description]
-        cur.close()
-        conn.close()
+    except Exception as e:
+        return None, None, f"Connessione al DB fallita: {e}"
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
         return cols, rows, None
     except Exception as e:
         return None, None, str(e)
+    finally:
+        conn.close()
 
 
 def format_results(cols, rows):
