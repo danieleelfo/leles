@@ -20,7 +20,7 @@ from tts_engine import synthesize_multilang_to_ogg
 
 from langdetect import detect, LangDetectException
 
-from timoniere import is_restart_trigger
+from timoniere import is_restart_leles_trigger
 
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---
 from dotenv import load_dotenv
@@ -86,6 +86,7 @@ AGENT_LABELS = {
     "verify": "✅ Verify",
     "git_pull": "📥 Git Agent",
     "git_status": "🔍 Git Agent",
+    "restart_bar_ai": "🔄 Process Agent (Bar AI)",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",
@@ -93,6 +94,7 @@ AGENT_LABELS = {
     "export_disabled": "📤 Export ❌",
     "git_pull_disabled": "📥 Git Agent ❌",
     "git_status_disabled": "🔍 Git Agent ❌",
+    "restart_bar_ai_disabled": "🔄 Process Agent ❌",
     "restart_unavailable": "🔄 Process Agent ⚠️",
 }
 
@@ -163,9 +165,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text += (
             "⚓ *Bentornato Capitano!* Per te l'accesso è totale e illimitato, mio padrone.\n\n"
             "Comandi admin extra:\n"
-            "`pull report leles` → git pull\n"
-            "`status leles` → git status + ultimo commit\n"
-            "`restart Lelé` → riavvia bot + API\n\n"
+            "`pull report leles` / `pull report bar_ai` → git pull\n"
+            "`status leles` / `status bar_ai` → git status + ultimo commit\n"
+            "`restart Lelé` → riavvia bot + API Leles\n"
+            "`restart bar_ai` → riavvia API + bot Telegram bar_ai\n\n"
         )
     else:
         welcome_text += f"Hai diritto a {MAX_QUESTIONS_PER_DAY} domande al giorno.\n\n"
@@ -219,7 +222,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message.text
 
     if chat_id in ADMIN_IDS:
-        if is_restart_trigger(message):
+        if is_restart_leles_trigger(message):
             await handle_restart(update, context)
             return
 

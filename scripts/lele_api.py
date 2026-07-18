@@ -31,10 +31,13 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_status
+from scripts.process_agent import restart_bar_ai
 
 from scripts.timoniere import (
     route,
-    AGENT_RESTART,
+    extract_project,
+    AGENT_RESTART_LELES,
+    AGENT_RESTART_BAR_AI,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
@@ -60,6 +63,8 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_QUERY,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
+    AGENT_RESTART_LELES,
+    AGENT_RESTART_BAR_AI,
 }
 
 
@@ -94,29 +99,41 @@ def ask_lele(q: Question):
         return _denied(agent)
 
     # ---------------------------------------------------------------
-    # PROCESS AGENT (restart) — non eseguibile qui: richiede di agire
-    # sul processo del bot Telegram stesso (os.execv), quindi vive in
-    # leles_bot.py e non dovrebbe mai arrivare fin qui (il bot lo
-    # intercetta prima di chiamare /ask). Se ci arriva comunque, lo
+    # PROCESS AGENT — restart Leles: non eseguibile qui, richiede di
+    # agire sul processo del bot Telegram stesso (os.execv), quindi
+    # vive in leles_bot.py e non dovrebbe mai arrivare fin qui (il bot
+    # lo intercetta prima di chiamare /ask). Se ci arriva comunque, lo
     # segnaliamo invece di far crashare la richiesta.
     # ---------------------------------------------------------------
-    if agent == AGENT_RESTART:
+    if agent == AGENT_RESTART_LELES:
         return {
-            "answer": "🔄 Il restart va lanciato direttamente da Telegram (comando 'restart Lelé'), non tramite /ask.",
+            "answer": "🔄 Il restart di Leles va lanciato direttamente da Telegram (comando 'restart Lelé'), non tramite /ask.",
             "type": "restart_unavailable",
         }
 
-    if agent == AGENT_GIT_PULL:
-        print("######## GIT AGENT (pull) ########")
+    # PROCESS AGENT — restart bar_ai: bar_ai è un processo ESTERNO a
+    # Leles, quindi si può eseguire direttamente qui, senza bisogno di
+    # riavviare Leles stesso.
+    if agent == AGENT_RESTART_BAR_AI:
+        print("######## PROCESS AGENT (restart bar_ai) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-        result = git_pull()
+        result = restart_bar_ai()
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_RESTART_BAR_AI}
+
+    if agent == AGENT_GIT_PULL:
+        project = extract_project(user_input)
+        print(f"######## GIT AGENT (pull, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = git_pull(project)
         save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_PULL}
 
     if agent == AGENT_GIT_STATUS:
-        print("######## GIT AGENT (status) ########")
+        project = extract_project(user_input)
+        print(f"######## GIT AGENT (status, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-        result = git_status()
+        result = git_status(project)
         save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_STATUS}
 
