@@ -94,6 +94,7 @@ def ask_lele(q: Question):
         return {"answer": "⚓ Capitano, dimmi qualcosa!", "type": "empty"}
 
     is_admin = q.chat_id in ADMIN_IDS
+    print(f"DEBUG chat_id raw = {q.chat_id!r} (type={type(q.chat_id).__name__}) — ADMIN_IDS={ADMIN_IDS} — is_admin={is_admin}")
     agent = route(user_input)
 
     print(f"TIMONIERE → {agent} (admin={is_admin})")
