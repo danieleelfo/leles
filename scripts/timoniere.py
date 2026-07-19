@@ -13,11 +13,13 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
     Timoniere (questo file)
        │
        ├── Git Agent       (git_agent.py — pull/status, multi-progetto:
-       │                     leles, bar_ai)
-       ├── Process Agent    (restart: leles resta in leles_bot.py —
-       │                     deve girare nel processo del bot stesso,
-       │                     via os.execv — bar_ai vive invece in
-       │                     process_agent.py, processo esterno)
+       │                     leles, bar_ai, lele, lele_story_whisper)
+       ├── Process Agent    (start/stop/restart di progetti ESTERNI —
+       │                     bar_ai, lele, lele_story_whisper — in
+       │                     process_agent.py. Il restart di Leles
+       │                     stesso resta un caso speciale a parte in
+       │                     leles_bot.py: richiede os.execv sul
+       │                     proprio processo, non è delegabile)
        ├── Verify Agent     (verify_agent.py)
        ├── Improve Agent    (improver_agent.py)
        ├── Export Agent     (export_agent.py)
@@ -39,12 +41,24 @@ deve poter importare le funzioni predicate semplici (is_restart_leles_trigger)
 senza trascinarsi dietro l'intera catena core→scripts. L'unico punto che
 ne ha davvero bisogno (is_query_trigger, per il Query Agent) lo importa
 localmente dentro route().
+
+Nota su extract_project: "lele" è cercato con confine di parola (\\blele\\b)
+per non matchare dentro "leles" o "lele_story_whisper". IMPORTANTE: "lele"
+da solo indica SEMPRE il progetto esterno Lelé (il pirata) — per riferirsi
+a questo bot (Leles) serve scrivere "leles" per esteso, oppure non
+nominare nessun progetto (default). Non c'è più una forma abbreviata
+"lele" = "leles": erano ambigue tra loro ed è meglio essere espliciti
+quando si tratta di comandi che uccidono/riavviano processi veri.
 """
+
+import re
 
 # --- Nomi agente (usati anche come valore del campo "type" in /ask) -------
 
 AGENT_RESTART_LELES = "restart_leles"
-AGENT_RESTART_BAR_AI = "restart_bar_ai"
+AGENT_START = "start_process"
+AGENT_STOP = "stop_process"
+AGENT_RESTART_EXTERNAL = "restart_process"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
@@ -55,38 +69,60 @@ AGENT_LLAMA = "llama_review"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
 _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirata")
-_BAR_AI_WORDS = ("bar_ai", "bar ai", "bar-ai")
+
+# Progetti esterni gestibili da Leles (start/stop/restart, pull/status).
+# "leles" NON è qui: è il progetto corrente, gestito a parte (self-restart
+# via os.execv, niente start/stop di se stesso).
+EXTERNAL_PROJECTS = ("bar_ai", "lele_story_whisper", "lele")
+
+_PROJECT_PATTERNS = {
+    "bar_ai": re.compile(r"bar[_\s-]?ai", re.IGNORECASE),
+    "lele_story_whisper": re.compile(r"(lele[_\s]?)?story[_\s]?whisper", re.IGNORECASE),
+    "lele": re.compile(r"\blele\b", re.IGNORECASE),
+}
 
 
 # --- Predicati dei singoli trigger -------------------------------------------
 
-def _mentions_bar_ai(text: str) -> bool:
-    lowered = text.lower()
-    return any(word in lowered for word in _BAR_AI_WORDS)
-
-
 def extract_project(text: str) -> str:
     """
-    'pull report bar_ai' -> 'bar_ai'; 'pull report leles' o 'pull report'
-    da solo -> 'leles' (default, per retrocompatibilità con i trigger
-    esistenti che non specificavano progetto).
+    Determina a quale progetto si riferisce `text`. Ordine di check
+    intenzionale: pattern più specifici (bar_ai, story_whisper) prima
+    del generico "lele" isolato, così "lele_story_whisper" non finisce
+    matchato come "lele". Default: "leles" (il progetto corrente).
     """
-    return "bar_ai" if _mentions_bar_ai(text) else "leles"
+    if _PROJECT_PATTERNS["bar_ai"].search(text):
+        return "bar_ai"
+    if _PROJECT_PATTERNS["lele_story_whisper"].search(text):
+        return "lele_story_whisper"
+    if _PROJECT_PATTERNS["lele"].search(text):
+        return "lele"
+    return "leles"
+
+
+def _mentions_external_project(text: str) -> bool:
+    return extract_project(text) != "leles"
 
 
 def is_restart_leles_trigger(text: str) -> bool:
-    """
-    'restart', 'restart leles', 'restart lelé' — MAI se il messaggio
-    menziona bar_ai, altrimenti "restart bar_ai" verrebbe intercettato
-    qui per errore (riavvierebbe Leles invece di bar_ai).
-    """
+    """'restart', 'restart leles', 'restart lelé' — mai se il messaggio menziona un progetto esterno."""
     t = text.lower().strip()
-    return t.startswith("restart") and not _mentions_bar_ai(t)
+    return t.startswith("restart") and not _mentions_external_project(t)
 
 
-def is_restart_bar_ai_trigger(text: str) -> bool:
+def is_restart_external_trigger(text: str) -> bool:
     t = text.lower().strip()
-    return t.startswith("restart") and _mentions_bar_ai(t)
+    return t.startswith("restart") and _mentions_external_project(t)
+
+
+def is_start_trigger(text: str) -> bool:
+    t = text.lower().strip()
+    return t.startswith("start") and _mentions_external_project(t)
+
+
+def is_stop_trigger(text: str) -> bool:
+    t = text.lower().strip()
+    return t.startswith("stop") and _mentions_external_project(t)
 
 
 def is_git_pull_trigger(text: str) -> bool:
@@ -94,10 +130,7 @@ def is_git_pull_trigger(text: str) -> bool:
 
 
 def is_git_status_trigger(text: str) -> bool:
-    t = text.lower().strip()
-    return t.startswith("status leles") or t.startswith("status lele") or (
-        t.startswith("status") and _mentions_bar_ai(t)
-    )
+    return text.lower().strip().startswith("status")
 
 
 def is_improve_trigger(text: str) -> bool:
@@ -129,10 +162,14 @@ def route(user_input: str) -> str:
 
     text = user_input.strip()
 
-    if is_restart_bar_ai_trigger(text):
-        return AGENT_RESTART_BAR_AI
+    if is_restart_external_trigger(text):
+        return AGENT_RESTART_EXTERNAL
     if is_restart_leles_trigger(text):
         return AGENT_RESTART_LELES
+    if is_start_trigger(text):
+        return AGENT_START
+    if is_stop_trigger(text):
+        return AGENT_STOP
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

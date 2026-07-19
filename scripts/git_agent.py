@@ -27,6 +27,14 @@ PROJECTS = {
         "path": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend",
         "label": "Bar AI",
     },
+    "lele": {
+        "path": "/Users/danny/Desktop/Danny/lele",
+        "label": "Lelé",
+    },
+    "lele_story_whisper": {
+        "path": "/Users/danny/Desktop/Danny/lele_story_whisper",
+        "label": "Story Whisper",
+    },
 }
 
 

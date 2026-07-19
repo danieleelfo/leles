@@ -1,73 +1,146 @@
 """
-process_agent.py — Process Agent: riavvio di processi ESTERNI a Leles
-(oggi: bar_ai). A differenza del restart di Leles stesso (che richiede
-os.execv sul proprio processo bot, e resta in leles_bot.py), qui Leles
-sta semplicemente uccidendo e rilanciando due processi indipendenti —
-non deve riavviare se stesso per farlo.
+process_agent.py — Process Agent: controllo dinamico di processi ESTERNI
+a Leles (bar_ai, lele_story_whisper, lele). Start/Stop/Restart generici
+per qualsiasi progetto registrato in PROGETTI_CONFIG.
 
-bar_ai ha il suo venv separato da quello di Leles, quindi i binari
-(python/uvicorn) vanno chiamati con il path assoluto dentro il suo
-venv — un semplice 'uvicorn ...' userebbe l'interprete/venv sbagliato.
+Leles stesso NON è gestibile da qui: non ha senso fargli fare "stop" di
+se stesso (si spegnerebbe senza nessuno che lo riaccende), e il suo
+restart richiede os.execv sul proprio processo — resta quindi come caso
+speciale in leles_bot.py (Process Agent "self").
+
+I processi qui sotto vengono lanciati detached (start_new_session=True):
+sopravvivono sia al riavvio di Leles sia alla chiusura del terminale che
+li ha lanciati.
 """
 
 import os
 import subprocess
 import time
 
-BAR_AI_PATH = "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend"
-BAR_AI_VENV_PYTHON = os.path.join(BAR_AI_PATH, "venv", "bin", "python3")
-BAR_AI_VENV_UVICORN = os.path.join(BAR_AI_PATH, "venv", "bin", "uvicorn")
-BAR_AI_PORT = "8081"
+# ==============================================================================
+# CONFIGURAZIONE PROGETTI
+# ==============================================================================
+# Mappa centralizzata: path, python del venv, e lista dei processi da
+# gestire per ciascun progetto. I pattern di pkill includono sempre il
+# path assoluto per evitare di uccidere per errore il processo di un
+# altro progetto (es. un altro uvicorn su una porta diversa).
+PROGETTI_CONFIG = {
+    "bar_ai": {
+        "path": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend",
+        "python": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/python3",
+        "processi": [
+            {
+                "tipo": "uvicorn",
+                "pattern": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/uvicorn main:app",
+                "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/uvicorn", "main:app", "--reload", "--port", "8081"],
+                "log": "uvicorn_restart.log",
+                "info": "📥 API (porta 8081)",
+            },
+            {
+                "tipo": "python",
+                "pattern": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/telegram_bot.py",
+                "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/python3", "telegram_bot.py"],
+                "log": "telegram_bot_restart.log",
+                "info": "🤖 Bot Telegram bar_ai",
+            },
+        ],
+    },
+    "lele_story_whisper": {
+        "path": "/Users/danny/Desktop/Danny/lele_story_whisper",
+        "python": "/Users/danny/Desktop/Danny/lele_story_whisper/venv/bin/python3",
+        "processi": [
+            {
+                "tipo": "uvicorn",
+                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/venv/bin/uvicorn main:app",
+                "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/venv/bin/uvicorn", "main:app", "--reload", "--port", "8088"],
+                "log": "uvicorn_whisper.log",
+                "info": "📥 API Story Whisper (porta 8088)",
+            },
+            {
+                "tipo": "python",
+                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/main.py",
+                "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/venv/bin/python3", "main.py"],
+                "log": "story_whisper_run.log",
+                "info": "📖 Script Story Whisper",
+            },
+        ],
+    },
+    "lele": {
+        "path": "/Users/danny/Desktop/Danny/lele",
+        "python": "/Users/danny/Desktop/Danny/lele/venv/bin/python3",
+        "processi": [
+            {
+                "tipo": "uvicorn",
+                "pattern": "/Users/danny/Desktop/Danny/lele/venv/bin/uvicorn lele_api:app",
+                "args": ["/Users/danny/Desktop/Danny/lele/venv/bin/uvicorn", "lele_api:app", "--reload", "--port", "8080"],
+                "log": "uvicorn_lele.log",
+                "info": "📥 API Lelé (porta 8080)",
+            },
+            {
+                "tipo": "python",
+                "pattern": "/Users/danny/Desktop/Danny/lele/lele_telegram_bot.py",
+                "args": ["/Users/danny/Desktop/Danny/lele/venv/bin/python3", "lele_telegram_bot.py"],
+                "log": "lele_bot_run.log",
+                "info": "🤖 Bot Telegram Lelé (pirata)",
+            },
+        ],
+    },
+}
 
-# Pattern usati sia per pkill sia riconoscibili nel comando lanciato:
-# includono il path completo del venv, così non rischiano di uccidere
-# per errore l'uvicorn/bot di Leles (che vive in un altro path/venv).
-_UVICORN_PKILL_PATTERN = f"{BAR_AI_VENV_UVICORN} main:app"
-_BOT_PKILL_PATTERN = f"{BAR_AI_PATH}/telegram_bot.py"
+
+# ==============================================================================
+# FUNZIONI GENERICHE DI CONTROLLO
+# ==============================================================================
+
+def stop_process(name: str) -> str:
+    """Uccide tutti i processi associati al progetto specificato."""
+    if name not in PROGETTI_CONFIG:
+        return f"❌ Progetto '{name}' non configurato."
+
+    config = PROGETTI_CONFIG[name]
+    for proc in config["processi"]:
+        subprocess.run(["pkill", "-f", proc["pattern"]], check=False)
+
+    return f"🛑 [{name.upper()}] Tutti i processi associati sono stati arrestati."
 
 
-def restart_bar_ai() -> str:
-    """
-    Kill + rilancio (detached, sopravvivono a Leles) di:
-      1. uvicorn main:app --port 8081  (API bar_ai)
-      2. telegram_bot.py                (bot Telegram bar_ai)
-    Ritorna un report testuale per l'utente.
-    """
-    if not os.path.isdir(BAR_AI_PATH):
-        return f"❌ Path bar_ai non trovato: {BAR_AI_PATH}"
-    if not os.path.exists(BAR_AI_VENV_PYTHON):
-        return f"❌ venv bar_ai non trovato: {BAR_AI_VENV_PYTHON}"
+def start_process(name: str) -> str:
+    """Avvia in background (detached) tutti i processi del progetto specificato."""
+    if name not in PROGETTI_CONFIG:
+        return f"❌ Progetto '{name}' non configurato."
+
+    config = PROGETTI_CONFIG[name]
+    path_progetto = config["path"]
+    python_progetto = config["python"]
+
+    if not os.path.isdir(path_progetto):
+        return f"❌ Path non trovato per {name}: {path_progetto}"
+    if not os.path.exists(python_progetto):
+        return f"❌ Venv/Python non trovato per {name}: {python_progetto}"
 
     steps = []
+    for proc in config["processi"]:
+        log_path = os.path.join(path_progetto, proc["log"])
+        with open(log_path, "a") as logfile:
+            subprocess.Popen(
+                proc["args"],
+                cwd=path_progetto,
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        steps.append(f"{proc['info']} avviato. Log: {proc['log']}")
 
-    # --- 1. Uvicorn (API) ---
-    subprocess.run(["pkill", "-f", _UVICORN_PKILL_PATTERN], check=False)
-    time.sleep(1)
+    return f"✅ [{name.upper()}] Avvio completato:\n\n" + "\n".join(steps)
 
-    uvicorn_log = os.path.join(BAR_AI_PATH, "uvicorn_restart.log")
-    with open(uvicorn_log, "a") as logfile:
-        subprocess.Popen(
-            [BAR_AI_VENV_UVICORN, "main:app", "--reload", "--port", BAR_AI_PORT],
-            cwd=BAR_AI_PATH,
-            stdout=logfile,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    steps.append(f"📥 API riavviata (porta {BAR_AI_PORT}), log: uvicorn_restart.log")
 
-    # --- 2. Bot Telegram bar_ai ---
-    subprocess.run(["pkill", "-f", _BOT_PKILL_PATTERN], check=False)
-    time.sleep(1)
+def restart_process(name: str) -> str:
+    """Stop + start del progetto richiesto. Pensato per i trigger Telegram."""
+    if name not in PROGETTI_CONFIG:
+        return f"❌ Progetto '{name}' non configurato."
 
-    bot_log = os.path.join(BAR_AI_PATH, "telegram_bot_restart.log")
-    with open(bot_log, "a") as logfile:
-        subprocess.Popen(
-            [BAR_AI_VENV_PYTHON, "telegram_bot.py"],
-            cwd=BAR_AI_PATH,
-            stdout=logfile,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    steps.append("🤖 Bot Telegram bar_ai riavviato, log: telegram_bot_restart.log")
+    stop_process(name)
+    time.sleep(1.5)  # pausa di sicurezza per il rilascio di porte/risorse
 
-    return "✅ Restart Bar AI completato:\n\n" + "\n".join(steps)
+    risultato_start = start_process(name)
+    return risultato_start.replace("Avvio completato", "Riavvio completato")

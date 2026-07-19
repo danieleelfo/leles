@@ -31,13 +31,15 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_status
-from scripts.process_agent import restart_bar_ai
+from scripts.process_agent import start_process, stop_process, restart_process
 
 from scripts.timoniere import (
     route,
     extract_project,
     AGENT_RESTART_LELES,
-    AGENT_RESTART_BAR_AI,
+    AGENT_START,
+    AGENT_STOP,
+    AGENT_RESTART_EXTERNAL,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
@@ -64,7 +66,9 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_RESTART_LELES,
-    AGENT_RESTART_BAR_AI,
+    AGENT_START,
+    AGENT_STOP,
+    AGENT_RESTART_EXTERNAL,
 }
 
 
@@ -111,15 +115,32 @@ def ask_lele(q: Question):
             "type": "restart_unavailable",
         }
 
-    # PROCESS AGENT — restart bar_ai: bar_ai è un processo ESTERNO a
-    # Leles, quindi si può eseguire direttamente qui, senza bisogno di
-    # riavviare Leles stesso.
-    if agent == AGENT_RESTART_BAR_AI:
-        print("######## PROCESS AGENT (restart bar_ai) ########")
+    # PROCESS AGENT — start/stop/restart di progetti ESTERNI (bar_ai,
+    # lele, lele_story_whisper): sono processi indipendenti da Leles,
+    # si possono eseguire direttamente qui senza toccare Leles stesso.
+    if agent == AGENT_START:
+        project = extract_project(user_input)
+        print(f"######## PROCESS AGENT (start, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-        result = restart_bar_ai()
+        result = start_process(project)
         save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
-        return {"answer": result, "type": AGENT_RESTART_BAR_AI}
+        return {"answer": result, "type": AGENT_START}
+
+    if agent == AGENT_STOP:
+        project = extract_project(user_input)
+        print(f"######## PROCESS AGENT (stop, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = stop_process(project)
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_STOP}
+
+    if agent == AGENT_RESTART_EXTERNAL:
+        project = extract_project(user_input)
+        print(f"######## PROCESS AGENT (restart, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = restart_process(project)
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_RESTART_EXTERNAL}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

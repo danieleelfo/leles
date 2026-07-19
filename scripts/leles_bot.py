@@ -86,7 +86,9 @@ AGENT_LABELS = {
     "verify": "✅ Verify",
     "git_pull": "📥 Git Agent",
     "git_status": "🔍 Git Agent",
-    "restart_bar_ai": "🔄 Process Agent (Bar AI)",
+    "start_process": "🟢 Process Agent",
+    "stop_process": "🛑 Process Agent",
+    "restart_process": "🔄 Process Agent",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",
@@ -94,7 +96,9 @@ AGENT_LABELS = {
     "export_disabled": "📤 Export ❌",
     "git_pull_disabled": "📥 Git Agent ❌",
     "git_status_disabled": "🔍 Git Agent ❌",
-    "restart_bar_ai_disabled": "🔄 Process Agent ❌",
+    "start_process_disabled": "🟢 Process Agent ❌",
+    "stop_process_disabled": "🛑 Process Agent ❌",
+    "restart_process_disabled": "🔄 Process Agent ❌",
     "restart_unavailable": "🔄 Process Agent ⚠️",
 }
 
@@ -165,10 +169,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text += (
             "⚓ *Bentornato Capitano!* Per te l'accesso è totale e illimitato, mio padrone.\n\n"
             "Comandi admin extra:\n"
-            "`pull report leles` / `pull report bar_ai` → git pull\n"
-            "`status leles` / `status bar_ai` → git status + ultimo commit\n"
-            "`restart Lelé` → riavvia bot + API Leles\n"
-            "`restart bar_ai` → riavvia API + bot Telegram bar_ai\n\n"
+            "`pull report <leles|bar_ai|lele|story_whisper>` → git pull\n"
+            "`status <leles|bar_ai|lele|story_whisper>` → git status + ultimo commit\n"
+            "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
+            "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
+            "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "
+            "per riferirti a questo bot usa 'leles' per esteso.\n\n"
         )
     else:
         welcome_text += f"Hai diritto a {MAX_QUESTIONS_PER_DAY} domande al giorno.\n\n"
