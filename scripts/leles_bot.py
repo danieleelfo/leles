@@ -1,7 +1,9 @@
 """
-leles_bot.py — Bot Telegram per Lelé ES, aperto a tutti con rate limit
-di 50 domande al giorno per chat_id (Illimitate per l'Admin).
-Versione Ottimizzata (Async & Thread-Safe) ES
+leles_bot.py — Bot Telegram per Lelé ES.
+
+Bot personale (solo Danny) — niente rate-limit multi-utente: chi non è
+nella whitelist ADMIN_IDS viene semplicemente ignorato con un messaggio
+di accesso negato, non c'è un tier "utente normale" da gestire.
 """
 
 import os
@@ -10,8 +12,8 @@ import subprocess
 import httpx
 import logging
 import asyncio
-from datetime import date
 from telegram import Update
+from telegram.error import Conflict
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
 from voice_transcriber import transcribe_audio
@@ -32,9 +34,8 @@ LELE_API_URL = os.getenv("LELE_API_URL", "http://localhost:8082/ask")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN non impostato — controlla il file .env")
 
-MAX_QUESTIONS_PER_DAY = 500
-ADMIN_IDS = [8733881519]  # Il tuo Chat ID con superpoteri
-MAX_VOICE_DURATION = 5 * 60  # 5 minuti (solo utenti normali)
+ADMIN_IDS = [8733881519]  # Il tuo Chat ID — unico utente autorizzato
+MAX_VOICE_DURATION = 5 * 60  # 5 minuti
 
 # Root del progetto (cartella che contiene scripts/), usata da "pull"/"restart"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,30 +54,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Rate limit in-memory protetto da Lock ---
-_usage = {}
-_usage_lock = asyncio.Lock()
+
+def is_authorized(chat_id: int) -> bool:
+    return chat_id in ADMIN_IDS
 
 
-async def check_and_increment(chat_id: int) -> tuple[bool, int]:
-    """Ritorna (consentito, domande_rimaste) - Thread Safe"""
-    async with _usage_lock:
-        if chat_id in ADMIN_IDS:
-            return True, 999
-
-        today = date.today()
-        entry = _usage.get(chat_id)
-
-        if entry is None or entry["date"] != today:
-            _usage[chat_id] = {"date": today, "count": 1}
-            return True, MAX_QUESTIONS_PER_DAY - 1
-
-        if entry["count"] >= MAX_QUESTIONS_PER_DAY:
-            return False, 0
-
-        entry["count"] += 1
-        return True, MAX_QUESTIONS_PER_DAY - entry["count"]
-        
 AGENT_LABELS = {
     "gemma": "🐐 Gemma 🧜🏻‍♀️",
     "llama_review": "⚓ Lelé reviewer ",
@@ -163,29 +145,27 @@ async def send_long_message(update: Update, text: str, parse_mode=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    welcome_text = "🏴‍☠️ *Lelé Engine* è online! Spara!\n\n"
-    
-    if chat_id in ADMIN_IDS:
-        welcome_text += (
-            "⚓ *Bentornato Capitano!* Per te l'accesso è totale e illimitato, mio padrone.\n\n"
-            "Comandi admin extra:\n"
-            "`pull report <leles|bar_ai|lele|story_whisper>` → git pull\n"
-            "`status <leles|bar_ai|lele|story_whisper>` → git status + ultimo commit\n"
-            "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
-            "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
-            "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "
-            "per riferirti a questo bot usa 'leles' per esteso.\n\n"
-        )
-    else:
-        welcome_text += f"Hai diritto a {MAX_QUESTIONS_PER_DAY} domande al giorno.\n\n"
 
-    welcome_text += (
+    if not is_authorized(chat_id):
+        await update.message.reply_text("⛔ Accesso non autorizzato.")
+        return
+
+    welcome_text = (
+        "🏴‍☠️ *Lelé Engine* è online! Spara!\n\n"
+        "⚓ *Bentornato Capitano!*\n\n"
+        "Comandi admin:\n"
+        "`pull report <leles|bar_ai|lele|story_whisper>` → git pull\n"
+        "`status <leles|bar_ai|lele|story_whisper>` → git status + ultimo commit\n"
+        "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
+        "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
+        "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "
+        "per riferirti a questo bot usa 'leles' per esteso.\n\n"
         "Comandi speciali:\n"
         "`query <domanda>` → interroga il database\n"
         "`review <testo>` → revisione llama3\n"
         "Altrimenti parla normalmente con Lelé."
     )
-    
+
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
@@ -225,12 +205,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
+    if not is_authorized(chat_id):
+        await update.message.reply_text("⛔ Accesso non autorizzato.")
+        return
+
     message = update.message.text
 
-    if chat_id in ADMIN_IDS:
-        if is_restart_leles_trigger(message):
-            await handle_restart(update, context)
-            return
+    if is_restart_leles_trigger(message):
+        await handle_restart(update, context)
+        return
 
     loop = asyncio.get_running_loop()
 
@@ -251,25 +234,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Messaggio da ID {chat_id} ({update.effective_user.username}): '{message}'")
 
-    allowed, remaining = await check_and_increment(chat_id)
-
-    if not allowed:
-        await update.message.reply_text(
-            f"⏳ Hai raggiunto il limite di {MAX_QUESTIONS_PER_DAY} domande oggi. "
-            "Torna a trovarmi domani, nostromo!"
-        )
-        return
-
     thinking_msg = await update.message.reply_text("🏴‍☠️ Lelé sta pensando... Aspé... 🌊 🏴‍☠️ ")
 
     try:
         answer, agent_type = await ask_lele(message, chat_id)
         agent_label = AGENT_LABELS.get(agent_type, "🏴‍☠️ Lelé")
-
-        if chat_id in ADMIN_IDS:
-            footer = "\n\n🏴‍☠️ Accesso Admin: Domande illimitate"
-        else:
-            footer = f"\n\n({remaining} domande rimaste oggi)" if remaining > 0 else "\n\n(ultima domanda di oggi)"
 
         try:
             await thinking_msg.delete()
@@ -282,13 +251,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total = len(answer_chunks)
             for i, chunk in enumerate(answer_chunks, start=1):
                 label = f"<b>{escape(agent_label)}</b> [{i}/{total}]\n" if total > 1 else f"<b>{escape(agent_label)}</b>\n"
-                tail = footer if i == total else ""
-                full_message = f"{label}<pre>{escape(chunk)}</pre>{tail}"
+                full_message = f"{label}<pre>{escape(chunk)}</pre>"
                 await update.message.reply_text(full_message, parse_mode="HTML")
                 if i < total:
                     await asyncio.sleep(0.3)
         else:
-            await send_long_message(update, f"{agent_label}\n\n{answer}{footer}", parse_mode=None)
+            await send_long_message(update, f"{agent_label}\n\n{answer}", parse_mode=None)
         
         if send_voice:
             ogg_out_path = None
@@ -320,23 +288,18 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     risposta in vocale (Piper TTS). Se il TTS fallisce, risponde in testo.
     """
     chat_id = update.effective_chat.id
-    loop = asyncio.get_running_loop()
 
-    allowed, remaining = await check_and_increment(chat_id)
-
-    if not allowed:
-        await update.message.reply_text(
-            f"⏳ Hai raggiunto il limite di {MAX_QUESTIONS_PER_DAY} domande oggi. "
-            "Torna a trovarmi domani, nostromo!"
-        )
+    if not is_authorized(chat_id):
+        await update.message.reply_text("⛔ Accesso non autorizzato.")
         return
+
+    loop = asyncio.get_running_loop()
 
     thinking_msg = await update.message.reply_text("🎙️ Lelé sta ascoltando... Con calma... 🏴‍☠️ 🌊")
 
     voice = update.message.voice
 
-    # Limite durata solo per utenti normali
-    if chat_id not in ADMIN_IDS and voice.duration > MAX_VOICE_DURATION:
+    if voice.duration > MAX_VOICE_DURATION:
         minutes = voice.duration // 60
         seconds = voice.duration % 60
 
@@ -417,7 +380,34 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     logger.info("🏴‍☠️ Bot Lelé ES avviato (Porta API: 8082) — in ascolto delle sirene... 🧜🏻‍♀️ ")
-    app.run_polling()
+
+    # drop_pending_updates=True: alla partenza, scarta qualsiasi update
+    # residuo lato Telegram invece di riprocessarlo — utile soprattutto
+    # dopo un kill non pulito della sessione precedente.
+    #
+    # Il retry qui sotto è una rete di sicurezza: se capita comunque un
+    # 409 Conflict transitorio (es. sessione precedente non ancora
+    # scaduta lato Telegram), il bot aspetta e riprova invece di
+    # spammare traceback all'infinito nei log.
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            app.run_polling(drop_pending_updates=True)
+            break  # uscita pulita (es. Ctrl+C) — non riprovare
+        except Conflict:
+            if attempt == max_retries:
+                logger.error(
+                    f"🏴‍☠️ Conflict persistente dopo {max_retries} tentativi — "
+                    "probabile un'altra istanza attiva altrove. Mi fermo."
+                )
+                raise
+            wait_s = 10 * attempt
+            logger.warning(
+                f"⚠️ Conflict (tentativo {attempt}/{max_retries}), "
+                f"riprovo tra {wait_s}s..."
+            )
+            import time
+            time.sleep(wait_s)
 
 
 if __name__ == "__main__":
