@@ -51,18 +51,26 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn main:app",
-                "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn", "main:app", "--reload", "--port", "8088"],
+                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn scripts.lele_api:app",
+                "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn", "scripts.lele_api:app", "--reload", "--port", "8088"],
                 "log": "uvicorn_whisper.log",
                 "info": "📥 API Story Whisper (porta 8088)",
             },
             {
                 "tipo": "python",
-                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/main.py",
-                "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/python3", "/Users/danny/Desktop/Danny/lele_story_whisper/main.py"],
+                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/scripts/lele_sw_bot.py",
+                "args": [
+                    "/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/python3",
+                    "/Users/danny/Desktop/Danny/lele_story_whisper/scripts/lele_sw_bot.py",
+
+                ],
+
                 "log": "story_whisper_run.log",
-                "info": "📖 Script Story Whisper",
+
+                "info": "🤖 Bot Telegram Story Whisper",
+
             },
+            
         ],
     },
     "lele": {

@@ -90,9 +90,16 @@ async def ask_lele(message: str, chat_id: int) -> tuple[str, str]:
     Invia una richiesta al motore Lelé e restituisce (risposta, tipo_agente).
     """
     async with httpx.AsyncClient(timeout=620) as client:
+        payload = {
+            "message": message,
+            "chat_id": chat_id,
+        }
+
+        print("BOT INVIA:", payload)
+
         response = await client.post(
             LELE_API_URL,
-            json={"message": message, "chat_id": chat_id},
+            json=payload,
         )
         response.raise_for_status()
 
