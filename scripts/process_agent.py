@@ -80,9 +80,15 @@ PROGETTI_CONFIG = {
             {
                 "tipo": "uvicorn",
                 "pattern": "/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn scripts.lele_api:app",
-                "args": ["/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn", "scripts.lele_api:app", "--reload", "--port", "8080"],
-                "log": "uvicorn_lele.log",
-                "info": "📥 API Lelé (porta 8080)",
+                "args": [
+                    "/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn",
+                    "scripts.lele_api:app",
+                    "--reload",
+                    "--port",
+                    "8080",
+                ],
+                "log": "uvicorn_whisper.log",
+                "info": "📥 API PIRATA 🏴‍☠️ (porta 8080)",
             },
             {
                 "tipo": "python",
