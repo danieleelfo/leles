@@ -59,6 +59,8 @@ AGENT_RESTART_LELES = "restart_leles"
 AGENT_START = "start_process"
 AGENT_STOP = "stop_process"
 AGENT_RESTART_EXTERNAL = "restart_process"
+AGENT_UVICORN_STATUS = "uvicorn_status"
+AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
@@ -125,6 +127,15 @@ def is_stop_trigger(text: str) -> bool:
     return t.startswith("stop") and _mentions_external_project(t)
 
 
+def is_uvicorn_status_trigger(text: str) -> bool:
+    return text.lower().strip().startswith("uvicorn status")
+
+
+def is_telegram_status_trigger(text: str) -> bool:
+    t = text.lower().strip()
+    return t.startswith("telegram status") or t.startswith("bot status")
+
+
 def is_git_pull_trigger(text: str) -> bool:
     return text.lower().strip().startswith("pull report")
 
@@ -170,6 +181,10 @@ def route(user_input: str) -> str:
         return AGENT_START
     if is_stop_trigger(text):
         return AGENT_STOP
+    if is_uvicorn_status_trigger(text):
+        return AGENT_UVICORN_STATUS
+    if is_telegram_status_trigger(text):
+        return AGENT_TELEGRAM_STATUS
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

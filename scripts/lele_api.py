@@ -31,7 +31,7 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_status
-from scripts.process_agent import start_process, stop_process, restart_process
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status
 
 from scripts.timoniere import (
     route,
@@ -40,6 +40,8 @@ from scripts.timoniere import (
     AGENT_START,
     AGENT_STOP,
     AGENT_RESTART_EXTERNAL,
+    AGENT_UVICORN_STATUS,
+    AGENT_TELEGRAM_STATUS,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
@@ -69,6 +71,8 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_START,
     AGENT_STOP,
     AGENT_RESTART_EXTERNAL,
+    AGENT_UVICORN_STATUS,
+    AGENT_TELEGRAM_STATUS,
 }
 
 
@@ -142,6 +146,20 @@ def ask_lele(q: Question):
         result = restart_process(project)
         save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_RESTART_EXTERNAL}
+
+    if agent == AGENT_UVICORN_STATUS:
+        print("######## PROCESS AGENT (uvicorn health-check) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = uvicorn_status()
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_UVICORN_STATUS}
+
+    if agent == AGENT_TELEGRAM_STATUS:
+        print("######## PROCESS AGENT (telegram health-check) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = telegram_status()
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_TELEGRAM_STATUS}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

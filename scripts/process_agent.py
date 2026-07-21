@@ -101,10 +101,65 @@ PROGETTI_CONFIG = {
     },
 }
 
+# Leles stessa: non è in PROGETTI_CONFIG (che è solo per start/stop di
+# progetti ESTERNI), ma per l'health-check ha senso includerla — un
+# pgrep su se stessa è innocuo e utile per avere un quadro completo in
+# un solo comando invece di controllare Leles a parte.
+LELES_HEALTH = {
+    "label": "Leles",
+    "processi": [
+        {
+            "tipo": "uvicorn",
+            "pattern": "uvicorn scripts.lele_api:app",
+            "info": "📥 API Leles (porta 8082)",
+        },
+        {
+            "tipo": "python",
+            "pattern": "scripts/leles_bot.py",
+            "info": "🤖 Bot Telegram Leles",
+        },
+    ],
+}
+
 
 # ==============================================================================
 # FUNZIONI GENERICHE DI CONTROLLO
 # ==============================================================================
+
+def _health_report(tipo_filtro: str) -> str:
+    """
+    Controlla, per Leles + tutti i progetti in PROGETTI_CONFIG, quali
+    processi del tipo richiesto ('uvicorn' o 'python') risultano vivi
+    in questo momento (via pgrep), indipendentemente da git/branch.
+    """
+    lines = []
+
+    all_projects = [LELES_HEALTH] + [
+        {"label": name.upper(), "processi": cfg["processi"]}
+        for name, cfg in PROGETTI_CONFIG.items()
+    ]
+
+    for project in all_projects:
+        for proc in project["processi"]:
+            if proc["tipo"] != tipo_filtro:
+                continue
+            alive = _is_running(proc["pattern"])
+            icon = "✅" if alive else "❌"
+            lines.append(f"{icon} [{project['label']}] {proc['info']}")
+
+    label = "Uvicorn/API" if tipo_filtro == "uvicorn" else "Bot Telegram"
+    return f"🔍 Status {label}:\n\n" + "\n".join(lines)
+
+
+def uvicorn_status() -> str:
+    """Controlla se le API (uvicorn) di Leles + tutti i progetti esterni sono vive."""
+    return _health_report("uvicorn")
+
+
+def telegram_status() -> str:
+    """Controlla se i bot Telegram di Leles + tutti i progetti esterni sono vivi."""
+    return _health_report("python")
+
 
 def stop_process(name: str) -> str:
     """Uccide tutti i processi associati al progetto specificato."""
