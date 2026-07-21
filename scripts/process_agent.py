@@ -31,14 +31,14 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/uvicorn main:app",
+                "pattern": "--port 8081",
                 "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/uvicorn", "main:app", "--reload", "--port", "8081"],
                 "log": "uvicorn_restart.log",
                 "info": "📥 API (porta 8081)",
             },
             {
                 "tipo": "python",
-                "pattern": "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/telegram_bot.py",
+                "pattern": "telegram_bot.py",
                 "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/python3", "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/telegram_bot.py"],
                 "log": "telegram_bot_restart.log",
                 "info": "🤖 Bot Telegram bar_ai",
@@ -51,14 +51,14 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn scripts.lele_api:app",
+                "pattern": "--port 8088",
                 "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn", "scripts.lele_api:app", "--reload", "--port", "8088"],
                 "log": "uvicorn_whisper.log",
                 "info": "📥 API Story Whisper (porta 8088)",
             },
             {
                 "tipo": "python",
-                "pattern": "/Users/danny/Desktop/Danny/lele_story_whisper/scripts/lele_sw_bot.py",
+                "pattern": "scripts/lele_sw_bot.py",
                 "args": [
                     "/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/python3",
                     "/Users/danny/Desktop/Danny/lele_story_whisper/scripts/lele_sw_bot.py",
@@ -79,7 +79,7 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn scripts.lele_api:app",
+                "pattern": "--port 8080",
                 "args": [
                     "/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn",
                     "scripts.lele_api:app",
@@ -92,7 +92,7 @@ PROGETTI_CONFIG = {
             },
             {
                 "tipo": "python",
-                "pattern": "/Users/danny/Desktop/Danny/lele/scripts/lele_telegram_bot.py",
+                "pattern": "scripts/lele_telegram_bot.py",
                 "args": ["/Users/danny/Desktop/Danny/lele/.venv/bin/python3", "/Users/danny/Desktop/Danny/lele/scripts/lele_telegram_bot.py"],
                 "log": "lele_bot_run.log",
                 "info": "🤖 Bot Telegram Lelé (pirata)",
@@ -109,18 +109,12 @@ LELES_HEALTH = {
     "label": "Leles",
     "processi": [
         {
-            "tipo": "uvicorn",
-            "pattern": "uvicorn scripts.lele_api:app",
-            "info": "📥 API Leles (porta 8082)",
-        },
-        {
             "tipo": "python",
             "pattern": "scripts/leles_bot.py",
             "info": "🤖 Bot Telegram Leles",
         },
     ],
 }
-
 
 # ==============================================================================
 # FUNZIONI GENERICHE DI CONTROLLO
@@ -143,12 +137,17 @@ def _health_report(tipo_filtro: str) -> str:
         for proc in project["processi"]:
             if proc["tipo"] != tipo_filtro:
                 continue
+                
+            print(f"DEBUG project = {project['label']}")
+            print(f"DEBUG pattern = {repr(proc['pattern'])}")
             alive = _is_running(proc["pattern"])
+            print(f"DEBUG alive = {alive}")
             icon = "✅" if alive else "❌"
             lines.append(f"{icon} [{project['label']}] {proc['info']}")
 
     label = "Uvicorn/API" if tipo_filtro == "uvicorn" else "Bot Telegram"
     return f"🔍 Status {label}:\n\n" + "\n".join(lines)
+
 
 
 def uvicorn_status() -> str:
@@ -170,7 +169,7 @@ def stop_process(name: str) -> str:
     steps = []
     for proc in config["processi"]:
         was_running = _is_running(proc["pattern"])
-        subprocess.run(["pkill", "-f", proc["pattern"]], check=False)
+        subprocess.run(["pkill", "-f", "--", proc["pattern"]], check=False)
         if was_running:
             steps.append(f"🛑 {proc['info']} arrestato.")
         else:
@@ -180,8 +179,17 @@ def stop_process(name: str) -> str:
 
 
 def _is_running(pattern: str) -> bool:
-    """True se esiste già un processo il cui comando contiene `pattern`."""
-    result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
+    print(f"DEBUG pattern={repr(pattern)}")
+    
+    result = subprocess.run(
+        ["pgrep", "-f", "--", pattern],
+        capture_output=True,
+        text=True,
+    )
+    print(f"DEBUG rc={result.returncode}")
+    print(f"DEBUG stdout={repr(result.stdout)}")
+    print(f"DEBUG stderr={repr(result.stderr)}")
+    
     return result.returncode == 0 and result.stdout.strip() != ""
 
 

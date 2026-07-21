@@ -107,7 +107,7 @@ def _mentions_external_project(text: str) -> bool:
 
 
 def is_restart_leles_trigger(text: str) -> bool:
-    """'restart', 'restart leles', 'restart lelé' — mai se il messaggio menziona un progetto esterno."""
+    """'restartleles', 'restart leles', 'restart lele_es' — mai se il messaggio menziona un progetto esterno."""
     t = text.lower().strip()
     return t.startswith("restart") and not _mentions_external_project(t)
 
