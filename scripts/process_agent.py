@@ -109,6 +109,11 @@ LELES_HEALTH = {
     "label": "Leles",
     "processi": [
         {
+            "tipo": "uvicorn",
+            "pattern": "--port 8082",
+            "info": "📥 API Leles (porta 8082)",
+        },
+        {
             "tipo": "python",
             "pattern": "scripts/leles_bot.py",
             "info": "🤖 Bot Telegram Leles",
