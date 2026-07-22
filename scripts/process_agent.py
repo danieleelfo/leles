@@ -169,7 +169,7 @@ def stop_process(name: str) -> str:
     steps = []
     for proc in config["processi"]:
         was_running = _is_running(proc["pattern"])
-        subprocess.run(["pkill", "-f", "--", proc["pattern"]], check=False)
+        subprocess.run(["pkill", "-f", proc["pattern"]], check=False)
         if was_running:
             steps.append(f"🛑 {proc['info']} arrestato.")
         else:
@@ -179,17 +179,20 @@ def stop_process(name: str) -> str:
 
 
 def _is_running(pattern: str) -> bool:
-    print(f"DEBUG pattern={repr(pattern)}")
-    
+    """
+    True se esiste già un processo il cui comando contiene `pattern`.
+
+    NOTA: niente '--' prima del pattern — su Linux è il terminatore di
+    opzioni standard, ma il pgrep BSD di macOS non lo supporta e la
+    ricerca fallisce silenziosamente (0 risultati anche quando il
+    processo esiste davvero). Bug reale, trovato confrontando un test
+    manuale (funzionante) con l'esecuzione da dentro Python (sempre ❌).
+    """
     result = subprocess.run(
-        ["pgrep", "-f", "--", pattern],
+        ["pgrep", "-f", pattern],
         capture_output=True,
         text=True,
     )
-    print(f"DEBUG rc={result.returncode}")
-    print(f"DEBUG stdout={repr(result.stdout)}")
-    print(f"DEBUG stderr={repr(result.stderr)}")
-    
     return result.returncode == 0 and result.stdout.strip() != ""
 
 
