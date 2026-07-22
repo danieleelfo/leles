@@ -31,7 +31,7 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "--port 8081",
+                "pattern": "port 8081",
                 "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/uvicorn", "main:app", "--reload", "--port", "8081"],
                 "log": "uvicorn_restart.log",
                 "info": "📥 API (porta 8081)",
@@ -51,7 +51,7 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "--port 8088",
+                "pattern": "port 8088",
                 "args": ["/Users/danny/Desktop/Danny/lele_story_whisper/.venv/bin/uvicorn", "scripts.lele_api:app", "--reload", "--port", "8088"],
                 "log": "uvicorn_whisper.log",
                 "info": "📥 API Story Whisper (porta 8088)",
@@ -79,7 +79,7 @@ PROGETTI_CONFIG = {
         "processi": [
             {
                 "tipo": "uvicorn",
-                "pattern": "--port 8080",
+                "pattern": "port 8080",
                 "args": [
                     "/Users/danny/Desktop/Danny/lele/.venv/bin/uvicorn",
                     "scripts.lele_api:app",
@@ -110,7 +110,7 @@ LELES_HEALTH = {
     "processi": [
         {
             "tipo": "uvicorn",
-            "pattern": "--port 8082",
+            "pattern": "port 8082",
             "info": "📥 API Leles (porta 8082)",
         },
         {
