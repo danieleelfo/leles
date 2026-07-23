@@ -170,15 +170,15 @@ def system_status() -> str:
     Dashboard completa in un solo comando: uvicorn + bot per tutti i
     progetti, più i servizi condivisi (Ollama, Postgres).
 
-    Import di health_agent fatto qui dentro (locale, non in testa al
-    file) per lo stesso motivo per cui timoniere.py fa lo stesso con
-    lele_engine9: process_agent.py deve restare importabile sia in
-    stile assoluto (scripts.process_agent, da uvicorn) sia in stile
-    sibling (process_agent, da leles_bot.py standalone) — health_agent
-    importa core.db, che richiede la root del progetto sul sys.path,
-    quindi non è sicuro farlo a livello di modulo.
+    Import di health_agent fatto qui dentro (locale) invece che in testa
+    al file: system_status() viene chiamata SOLO da lele_api.py, sempre
+    in contesto "assoluto" (root del progetto sul sys.path, via uvicorn
+    scripts.lele_api:app) — quindi qui usiamo `scripts.health_agent`.
+    A differenza di timoniere.py, process_agent.py in generale non ha
+    bisogno di restare importabile anche in stile sibling da
+    leles_bot.py, perché quest'ultimo non lo importa mai direttamente.
     """
-    from health_agent import check_ollama, check_postgres
+    from scripts.health_agent import check_ollama, check_postgres
 
     lines = ["🖥️ SISTEMA\n"]
 
