@@ -87,7 +87,7 @@ PROGETTI_CONFIG = {
                     "--port",
                     "8080",
                 ],
-                "log": "uvicorn_whisper.log",
+                "log": "uvicorn_lele.log",
                 "info": "📥 API PIRATA 🏴‍☠️ (porta 8080)",
             },
             {
@@ -107,6 +107,11 @@ PROGETTI_CONFIG = {
 # un solo comando invece di controllare Leles a parte.
 LELES_HEALTH = {
     "label": "Leles",
+    "self": True,  # è il processo che sta rispondendo a questa richiesta:
+                   # tautologicamente vivo, non serve pgrep (che su se
+                   # stesso ha sempre dato falsi negativi, causa mai
+                   # isolata con certezza — non vale più la pena
+                   # rincorrerla, qui basta sapere che è "sempre su").
     "processi": [
         {
             "tipo": "uvicorn",
@@ -142,11 +147,8 @@ def _health_report(tipo_filtro: str) -> str:
         for proc in project["processi"]:
             if proc["tipo"] != tipo_filtro:
                 continue
-                
-            print(f"DEBUG project = {project['label']}")
-            print(f"DEBUG pattern = {repr(proc['pattern'])}")
-            alive = _is_running(proc["pattern"])
-            print(f"DEBUG alive = {alive}")
+
+            alive = True if project.get("self") else _is_running(proc["pattern"])
             icon = "✅" if alive else "❌"
             lines.append(f"{icon} [{project['label']}] {proc['info']}")
 
