@@ -299,3 +299,21 @@ def restart_process(name: str) -> str:
 
     risultato_start = start_process(name)
     return risultato_start.replace("Avvio completato", "Riavvio completato")
+    
+def restart_all() -> dict[str, str]:
+    """
+    Riavvia tutti i progetti registrati in PROGETTI_CONFIG.
+
+    Ritorna un dizionario:
+        {
+            "bar_ai": "...",
+            "lele_story_whisper": "...",
+            "lele": "..."
+        }
+    """
+    results = {}
+
+    for name in PROGETTI_CONFIG:
+        results[name] = restart_process(name)
+
+    return results
