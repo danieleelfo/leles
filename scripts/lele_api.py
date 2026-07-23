@@ -131,7 +131,7 @@ def ask_lele(q: Question):
         print(f"######## PROCESS AGENT (start, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = start_process(project)
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_START_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_START}
 
     if agent == AGENT_STOP:
@@ -139,7 +139,7 @@ def ask_lele(q: Question):
         print(f"######## PROCESS AGENT (stop, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = stop_process(project)
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_STOP_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_STOP}
 
     if agent == AGENT_RESTART_EXTERNAL:
@@ -147,28 +147,28 @@ def ask_lele(q: Question):
         print(f"######## PROCESS AGENT (restart, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = restart_process(project)
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_RESTART_EXT_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_RESTART_EXTERNAL}
 
     if agent == AGENT_UVICORN_STATUS:
         print("######## PROCESS AGENT (uvicorn health-check) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = uvicorn_status()
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_UV_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_UVICORN_STATUS}
 
     if agent == AGENT_TELEGRAM_STATUS:
         print("######## PROCESS AGENT (telegram health-check) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = telegram_status()
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_TEL_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_TELEGRAM_STATUS}
 
     if agent == AGENT_SYSTEM_STATUS:
         print("######## HEALTH AGENT (system status) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = system_status()
-        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_P_SYS_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_SYSTEM_STATUS}
 
     if agent == AGENT_GIT_PULL:
@@ -176,7 +176,7 @@ def ask_lele(q: Question):
         print(f"######## GIT AGENT (pull, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = git_pull(project)
-        save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_GIT_PULL_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_PULL}
 
     if agent == AGENT_GIT_STATUS:
@@ -184,7 +184,7 @@ def ask_lele(q: Question):
         print(f"######## GIT AGENT (status, project={project}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
         result = git_status(project)
-        save_memory("LELE_GIT_ES", result, chat_id=q.chat_id)
+        save_memory("LELE_GIT_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_STATUS}
 
     if agent == AGENT_IMPROVE:
