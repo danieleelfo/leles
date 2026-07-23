@@ -73,6 +73,7 @@ AGENT_LABELS = {
     "restart_process": "🔄 Process Agent",
     "uvicorn_status": "🔍 Process Agent",
     "telegram_status": "🔍 Process Agent",
+    "system_status": "🖥️ Health Agent",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",
@@ -167,6 +168,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`status <leles|bar_ai|lele|story_whisper>` → git status + ultimo commit\n"
         "`uvicorn status` → controlla se tutte le API sono vive\n"
         "`telegram status` → controlla se tutti i bot sono vivi\n"
+        "`status sistema` → dashboard completa (API+bot+Ollama+Postgres)\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
         "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "

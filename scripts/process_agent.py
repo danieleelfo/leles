@@ -165,6 +165,50 @@ def telegram_status() -> str:
     return _health_report("python")
 
 
+def system_status() -> str:
+    """
+    Dashboard completa in un solo comando: uvicorn + bot per tutti i
+    progetti, più i servizi condivisi (Ollama, Postgres).
+
+    Import di health_agent fatto qui dentro (locale, non in testa al
+    file) per lo stesso motivo per cui timoniere.py fa lo stesso con
+    lele_engine9: process_agent.py deve restare importabile sia in
+    stile assoluto (scripts.process_agent, da uvicorn) sia in stile
+    sibling (process_agent, da leles_bot.py standalone) — health_agent
+    importa core.db, che richiede la root del progetto sul sys.path,
+    quindi non è sicuro farlo a livello di modulo.
+    """
+    from health_agent import check_ollama, check_postgres
+
+    lines = ["🖥️ SISTEMA\n"]
+
+    lines.append("📥 API (uvicorn):")
+    all_projects = [LELES_HEALTH] + [
+        {"label": name.upper(), "processi": cfg["processi"]}
+        for name, cfg in PROGETTI_CONFIG.items()
+    ]
+    for project in all_projects:
+        for proc in project["processi"]:
+            if proc["tipo"] != "uvicorn":
+                continue
+            icon = "✅" if _is_running(proc["pattern"]) else "❌"
+            lines.append(f"  {icon} {project['label']}")
+
+    lines.append("\n🤖 Bot Telegram:")
+    for project in all_projects:
+        for proc in project["processi"]:
+            if proc["tipo"] != "python":
+                continue
+            icon = "✅" if _is_running(proc["pattern"]) else "❌"
+            lines.append(f"  {icon} {project['label']}")
+
+    lines.append("\n🔌 Servizi condivisi:")
+    lines.append(f"  {'✅' if check_ollama() else '❌'} Ollama")
+    lines.append(f"  {'✅' if check_postgres() else '❌'} PostgreSQL")
+
+    return "\n".join(lines)
+
+
 def stop_process(name: str) -> str:
     """Uccide tutti i processi associati al progetto specificato."""
     if name not in PROGETTI_CONFIG:

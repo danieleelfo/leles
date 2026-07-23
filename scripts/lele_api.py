@@ -31,7 +31,8 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_status
-from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status
+from scripts.health_agent import check_ollama, check_postgres, get_uptime
 
 from scripts.timoniere import (
     route,
@@ -42,6 +43,7 @@ from scripts.timoniere import (
     AGENT_RESTART_EXTERNAL,
     AGENT_UVICORN_STATUS,
     AGENT_TELEGRAM_STATUS,
+    AGENT_SYSTEM_STATUS,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
@@ -73,6 +75,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_RESTART_EXTERNAL,
     AGENT_UVICORN_STATUS,
     AGENT_TELEGRAM_STATUS,
+    AGENT_SYSTEM_STATUS,
 }
 
 
@@ -161,6 +164,13 @@ def ask_lele(q: Question):
         save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_TELEGRAM_STATUS}
 
+    if agent == AGENT_SYSTEM_STATUS:
+        print("######## HEALTH AGENT (system status) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = system_status()
+        save_memory("LELE_PROCESS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_SYSTEM_STATUS}
+
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)
         print(f"######## GIT AGENT (pull, project={project}) ########")
@@ -244,6 +254,15 @@ def ask_lele(q: Question):
     return {"answer": gemma_out, "type": AGENT_GEMMA}
 
 
+VERSION = "1.1.0"
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "Lelé v9 ES"}
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "ollama": check_ollama(),
+        "postgres": check_postgres(),
+        "uptime": get_uptime(),
+    }
