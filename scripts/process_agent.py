@@ -317,3 +317,81 @@ def restart_all() -> dict[str, str]:
         results[name] = restart_process(name)
 
     return results
+    
+# ==============================================================================
+# LELES — caso speciale (non è in PROGETTI_CONFIG)
+# ==============================================================================
+# A differenza dei progetti in PROGETTI_CONFIG, Leles non ha un blocco di
+# config con path/python/processi perché normalmente si riavvia da solo
+# via os.execv (vedi handle_restart in leles_bot.py). Questa funzione
+# replica lo stesso risultato ma dall'ESTERNO (es. da un DAG Airflow),
+# dove non esiste un processo bot "vivo" da cui fare execv su se stesso:
+# semplicemente killa e rilancia detached, sia uvicorn che il bot.
+#
+# ATTENZIONE: verifica LELES_PYTHON e il path dell'eseguibile uvicorn
+# qui sotto — sono stati dedotti per analogia con lo schema usato dagli
+# altri progetti in PROGETTI_CONFIG (.venv/bin/python3, .venv/bin/uvicorn),
+# ma non sono stati confermati contro la struttura reale della cartella
+# leles/.
+
+LELES_PATH = "/Users/danny/Desktop/Danny/leles"
+LELES_PYTHON = "/Users/danny/Desktop/Danny/leles/.venv/bin/python3"
+LELES_UVICORN = "/Users/danny/Desktop/Danny/leles/.venv/bin/uvicorn"
+LELES_API_PORT = "8082"
+
+
+def restart_leles() -> str:
+    """
+    Riavvia Leles dall'esterno: kill + relaunch di uvicorn (porta 8082)
+    e del bot Telegram (leles_bot.py), entrambi detached.
+
+    Pensata per essere chiamata da un contesto esterno al bot stesso
+    (es. task Airflow), dove os.execv non è applicabile perché non
+    c'è un processo bot "in ascolto" da sostituire.
+    """
+    if not os.path.isdir(LELES_PATH):
+        return f"❌ Path non trovato per Leles: {LELES_PATH}"
+    if not os.path.exists(LELES_PYTHON):
+        return f"❌ Venv/Python non trovato per Leles: {LELES_PYTHON}"
+
+    steps = []
+
+    # --- 1. Uvicorn (API Leles, porta 8082) ---
+    was_running = _is_running("port 8082")
+    subprocess.run(["pkill", "-f", "port 8082"], check=False)
+    time.sleep(1.5)
+
+    log_path = os.path.join(LELES_PATH, "uvicorn_restart.log")
+    with open(log_path, "a") as logfile:
+        subprocess.Popen(
+            [LELES_UVICORN, "scripts.lele_api:app", "--reload", "--port", LELES_API_PORT],
+            cwd=LELES_PATH,
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    steps.append(
+        f"📥 API Leles (porta 8082) {'riavviato' if was_running else 'avviato'}. "
+        "Log: uvicorn_restart.log"
+    )
+
+    # --- 2. Bot Telegram (leles_bot.py) ---
+    was_running = _is_running("scripts/leles_bot.py")
+    subprocess.run(["pkill", "-f", "scripts/leles_bot.py"], check=False)
+    time.sleep(1.5)
+
+    bot_log_path = os.path.join(LELES_PATH, "leles_bot_restart.log")
+    with open(bot_log_path, "a") as logfile:
+        subprocess.Popen(
+            [LELES_PYTHON, os.path.join(LELES_PATH, "scripts", "leles_bot.py")],
+            cwd=LELES_PATH,
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    steps.append(
+        f"🤖 Bot Telegram Leles {'riavviato' if was_running else 'avviato'}. "
+        "Log: leles_bot_restart.log"
+    )
+
+    return "✅ [LELES] Riavvio completato:\n\n" + "\n".join(steps)

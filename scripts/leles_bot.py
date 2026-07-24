@@ -198,10 +198,21 @@ async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(1)
 
     # 2. Rilancia uvicorn come processo indipendente (sopravvive al riavvio del bot)
+    #
+    # IMPORTANTE: usiamo il path assoluto dell'uvicorn dentro il venv di
+    # Leles (PROJECT_ROOT/.venv/bin/uvicorn), NON solo "uvicorn". Se
+    # chiamato per nome, subprocess.Popen risolve il binario cercando nel
+    # PATH ereditato dal processo che ha lanciato/rilanciato questo bot
+    # (es. via os.execv più sotto) — se quel processo era stato avviato
+    # da un terminale con un venv DIVERSO attivo (es. il venv di un altro
+    # progetto), si finisce per lanciare l'uvicorn sbagliato, con le
+    # dipendenze sbagliate (bug reale riscontrato: ModuleNotFoundError su
+    # psycopg2 perché aveva preso l'uvicorn del venv di Airflow).
     log_path = os.path.join(PROJECT_ROOT, "uvicorn_restart.log")
+    uvicorn_bin = os.path.join(PROJECT_ROOT, ".venv", "bin", "uvicorn")
     with open(log_path, "a") as logfile:
         subprocess.Popen(
-            ["uvicorn", "scripts.lele_api:app", "--reload", "--port", API_PORT],
+            [uvicorn_bin, "scripts.lele_api:app", "--reload", "--port", API_PORT],
             cwd=PROJECT_ROOT,
             stdout=logfile,
             stderr=subprocess.STDOUT,
