@@ -38,7 +38,7 @@ PROGETTI_CONFIG = {
             },
             {
                 "tipo": "python",
-                "pattern": "telegram_bot.py",
+                "pattern": "bar_ai_demo/backend/telegram_bot.py",
                 "args": ["/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/venv/bin/python3", "/Users/danny/Desktop/Danny/Work/bar_ai_demo/backend/telegram_bot.py"],
                 "log": "telegram_bot_restart.log",
                 "info": "🤖 Bot Telegram bar_ai",
@@ -92,7 +92,7 @@ PROGETTI_CONFIG = {
             },
             {
                 "tipo": "python",
-                "pattern": "scripts/lele_telegram_bot.py",
+                "pattern": "Danny/lele/scripts/lele_telegram_bot.py",
                 "args": ["/Users/danny/Desktop/Danny/lele/.venv/bin/python3", "/Users/danny/Desktop/Danny/lele/scripts/lele_telegram_bot.py"],
                 "log": "lele_bot_run.log",
                 "info": "🤖 Bot Telegram Lelé (pirata)",
