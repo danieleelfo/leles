@@ -74,7 +74,8 @@ def ask_model(model, prompt, retries=2):
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": -1
+                        "num_predict": 2000,
+                        "think": False
                     }
                 },
                 timeout=600

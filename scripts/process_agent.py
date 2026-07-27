@@ -193,7 +193,8 @@ def system_status() -> str:
         for proc in project["processi"]:
             if proc["tipo"] != "uvicorn":
                 continue
-            icon = "✅" if _is_running(proc["pattern"]) else "❌"
+            alive = True if project.get("self") else _is_running(proc["pattern"])
+            icon = "✅" if alive else "❌"
             lines.append(f"  {icon} {project['label']}")
 
     lines.append("\n🤖 Bot Telegram:")
@@ -201,7 +202,8 @@ def system_status() -> str:
         for proc in project["processi"]:
             if proc["tipo"] != "python":
                 continue
-            icon = "✅" if _is_running(proc["pattern"]) else "❌"
+            alive = True if project.get("self") else _is_running(proc["pattern"])
+            icon = "✅" if alive else "❌"
             lines.append(f"  {icon} {project['label']}")
 
     lines.append("\n🔌 Servizi condivisi:")
@@ -334,7 +336,7 @@ def restart_all() -> dict[str, str]:
 # ma non sono stati confermati contro la struttura reale della cartella
 # leles/.
 
-LELES_PATH = "/Users/danny/Desktop/Danny/leles"
+LELES_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LELES_PYTHON = "/Users/danny/Desktop/Danny/leles/.venv/bin/python3"
 LELES_UVICORN = "/Users/danny/Desktop/Danny/leles/.venv/bin/uvicorn"
 LELES_API_PORT = "8082"

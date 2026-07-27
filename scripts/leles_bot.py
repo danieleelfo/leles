@@ -12,6 +12,7 @@ import subprocess
 import httpx
 import logging
 import asyncio
+import re
 from telegram import Update
 from telegram.error import Conflict
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
@@ -23,6 +24,7 @@ from tts_engine import synthesize_multilang_to_ogg
 from langdetect import detect, LangDetectException
 
 from timoniere import is_restart_leles_trigger
+from datetime import datetime
 
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---
 from dotenv import load_dotenv
@@ -44,6 +46,10 @@ API_PORT = os.getenv("LELE_API_PORT", "8082")
 # Cartella temporanea per i vocali in arrivo (cancellati subito dopo la trascrizione)
 VOICE_TMP_DIR = os.getenv("VOICE_TMP_DIR", "tmp_voice_in")
 os.makedirs(VOICE_TMP_DIR, exist_ok=True)
+
+DETTATURA_DIR = os.path.join(PROJECT_ROOT, "Dettatura")
+
+os.makedirs(DETTATURA_DIR, exist_ok=True)
 
 # Aiutino per Whisper: orienta la trascrizione verso i comandi noti di Lelé
 VOICE_INITIAL_PROMPT = "query, review, improve, edita, roast, critica"
@@ -137,6 +143,17 @@ def split_message(text: str, max_len: int = TELEGRAM_MAX_CHARS) -> list[str]:
 
     return chunks
 
+def formatta_poesia(testo: str) -> str:
+    """
+    Formatta una poesia dettata a voce senza modificarne le parole.
+    Inserisce una riga vuota dopo ogni verso riconosciuto.
+    """
+    # pulizia spazi
+    testo = re.sub(r"\s+", " ", testo).strip()
+    # separa sui principali segni di punteggiatura
+    versi = re.split(r"(?<=[\.,;:!?])\s+", testo)
+    versi = [v.strip().capitalize() for v in versi if v.strip()]
+    return "\n\n".join(versi)
 
 async def send_long_message(update: Update, text: str, parse_mode=None):
     """
@@ -364,6 +381,45 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ogg_in_path and os.path.exists(ogg_in_path):
             os.remove(ogg_in_path)
 
+    # --- Modalità "Dettatura": salva la trascrizione su disco.
+    if transcribed_text.lower().startswith("dettatura"):
+        testo = transcribed_text[len("dettatura"):].strip(" ,.-")
+        # Formato:
+        # Dettatura storia, C'era una volta...
+        if "," in testo:
+            nome_file, contenuto = testo.split(",", 1)
+            nome_file = nome_file.strip()
+            contenuto = contenuto.strip()
+        else:
+            nome_file = "dettatura"
+            contenuto = testo
+        # pulizia nome file
+        nome_file = "".join(
+            c if c.isalnum() else "_"
+            for c in nome_file.lower()
+        )
+
+        while "__" in nome_file:
+            nome_file = nome_file.replace("__", "_")
+        nome_file = nome_file.strip("_")
+        # Formattazione speciale per le poesie
+        if nome_file == "poesia":
+            contenuto = formatta_poesia(contenuto)
+        filename = (
+            datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            + f"_{nome_file}.txt"
+        )
+
+        txt_path = os.path.join(DETTATURA_DIR, filename)
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(contenuto)
+        with open(txt_path, "rb") as doc:
+            await update.message.reply_document(
+                document=doc,
+                filename=filename,
+                caption=f"📝 Dettatura salvata\n📂 {filename}"
+            )
+        return
     # --- STEP 2: instrada il testo trascritto nella stessa pipeline /ask del testo ---
     try:
         answer, agent_type = await ask_lele(transcribed_text, chat_id)

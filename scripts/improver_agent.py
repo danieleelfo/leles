@@ -35,7 +35,8 @@ def ask_ollama(system, prompt, model="gemma4:latest", num_predict=3000):
                 "stream": False,
                 "options": {
                     "temperature": 0.4,
-                    "num_predict": num_predict
+                    "num_predict": num_predict,
+                    "think": False
                 }
             },
             timeout=300
@@ -66,7 +67,7 @@ Analyze this code and suggest specific improvements:
     return ask_ollama(SYSTEM_GEMMA_IMPROVER, prompt, model="gemma4:latest", num_predict=3000)
 
 
-def improve_agent(filepath):
+def improve_agent(filepath, chat_id=None):
     # STEP 1: leggi file
     code, error = read_file(filepath)
     if error:
@@ -82,7 +83,7 @@ def improve_agent(filepath):
     print(gemma_out)
 
     # STEP 3: salva in DB
-    save_memory("IMP_GEMMA_ES", f"[{filepath}]\n{gemma_out}")
+    save_memory("IMP_GEMMA_ES", f"[{filepath}]\n{gemma_out}", chat_id=chat_id)
     print("\n✅ Saved to DB as IMP_GEMMA_ES")
 
     return gemma_out

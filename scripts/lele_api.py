@@ -193,7 +193,7 @@ def ask_lele(q: Question):
 
         filepath = user_input[7:].strip()
         print(f"Filepath: {filepath}")
-        result = improve_agent(filepath)
+        result = improve_agent(filepath, chat_id=q.chat_id)
         save_memory("LELE_IMPROVE_ES", result or "Nessun suggerimento generato.", chat_id=q.chat_id)
 
         return {

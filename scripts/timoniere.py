@@ -24,7 +24,7 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
        ├── Improve Agent    (improver_agent.py)
        ├── Export Agent     (export_agent.py)
        ├── Query Agent      (db_agent.py, ex "DB Agent")
-       ├── Healt Agent      (health_agent.py)
+       ├── Health Agent     (health_agent.py)
        └── Ollama Agent     (lele_engine9.py — gemma4 + llama3 review)
 
 Uso:
