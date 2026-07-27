@@ -11,3 +11,7 @@ logs/*.log
 uvicorn_restart.log
 bot_token.md.pages
 dettatura/
+# Runtime logs
+leles_bot_restart.log
+uvicorn_restart.log
+
