@@ -169,46 +169,73 @@ def telegram_status() -> str:
 
 def system_status() -> str:
     """
-    Dashboard completa in un solo comando: uvicorn + bot per tutti i
-    progetti, più i servizi condivisi (Ollama, Postgres).
+    Dashboard completa in stile "LELES PLATFORM": un'icona per progetto
+    (uvicorn+bot combinati), servizi condivisi (Postgres/Ollama/Airflow),
+    modelli Ollama effettivamente caricati, e stato git di Leles.
 
-    Import di health_agent fatto qui dentro (locale) invece che in testa
-    al file: system_status() viene chiamata SOLO da lele_api.py, sempre
-    in contesto "assoluto" (root del progetto sul sys.path, via uvicorn
-    scripts.lele_api:app) — quindi qui usiamo `scripts.health_agent`.
-    A differenza di timoniere.py, process_agent.py in generale non ha
-    bisogno di restare importabile anche in stile sibling da
-    leles_bot.py, perché quest'ultimo non lo importa mai direttamente.
+    Import locali (health_agent, git_agent) per lo stesso motivo spiegato
+    altrove in questo file: system_status() gira sempre in contesto
+    "assoluto" (chiamata solo da lele_api.py via uvicorn), quindi qui
+    vanno bene gli import assoluti scripts.*.
     """
-    from scripts.health_agent import check_ollama, check_postgres
+    from scripts.health_agent import check_ollama, check_postgres, check_port, check_model_loaded
 
-    lines = ["🖥️ SISTEMA\n"]
+    lines = ["🖥️ LELES PLATFORM\n"]
 
-    lines.append("📥 API (uvicorn):")
+    # --- Projects: un'icona per progetto, combinando uvicorn+bot ---
+    lines.append("Projects")
+    lines.append("──────────────")
     all_projects = [LELES_HEALTH] + [
-        {"label": name.upper(), "processi": cfg["processi"]}
+        {"label": name.upper(), "processi": cfg["processi"], "self": False}
         for name, cfg in PROGETTI_CONFIG.items()
     ]
     for project in all_projects:
-        for proc in project["processi"]:
-            if proc["tipo"] != "uvicorn":
-                continue
-            alive = True if project.get("self") else _is_running(proc["pattern"])
-            icon = "✅" if alive else "❌"
-            lines.append(f"  {icon} {project['label']}")
+        if project.get("self"):
+            alive = True
+        else:
+            alive = all(_is_running(proc["pattern"]) for proc in project["processi"])
+        icon = "✅" if alive else "❌"
+        lines.append(f"{icon} {project['label']}")
 
-    lines.append("\n🤖 Bot Telegram:")
-    for project in all_projects:
-        for proc in project["processi"]:
-            if proc["tipo"] != "python":
-                continue
-            alive = True if project.get("self") else _is_running(proc["pattern"])
-            icon = "✅" if alive else "❌"
-            lines.append(f"  {icon} {project['label']}")
+    # --- Shared Services ---
+    lines.append("\nShared Services")
+    lines.append("──────────────")
+    lines.append(f"{'✅' if check_postgres() else '❌'} PostgreSQL")
+    lines.append(f"{'✅' if check_ollama() else '❌'} Ollama")
+    lines.append(f"{'✅' if check_port(8085) else '❌'} Apache Airflow")
 
-    lines.append("\n🔌 Servizi condivisi:")
-    lines.append(f"  {'✅' if check_ollama() else '❌'} Ollama")
-    lines.append(f"  {'✅' if check_postgres() else '❌'} PostgreSQL")
+    # --- Models: caricati per davvero in Ollama, non solo "Ollama vivo" ---
+    lines.append("\nModels")
+    lines.append("──────────────")
+    lines.append(f"{'🟢' if check_model_loaded('gemma4') else '⚪️'} Gemma4")
+    lines.append(f"{'🟢' if check_model_loaded('llama3') else '⚪️'} Llama3")
+
+    # --- Git (Leles stessa) ---
+    lines.append("\nGit")
+    lines.append("──────────────")
+    branch_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=LELES_PATH, capture_output=True, text=True,
+    )
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=LELES_PATH, capture_output=True, text=True,
+    )
+    branch = branch_result.stdout.strip() or "?"
+    dirty_files = status_result.stdout.strip()
+    is_clean = status_result.returncode == 0 and dirty_files == ""
+    lines.append(f"Branch: {branch}")
+
+    if is_clean:
+        lines.append("Status: Clean ✅")
+    else:
+        file_lines = dirty_files.splitlines()
+        lines.append(f"Status: ⚠️ {len(file_lines)} file modificati")
+        max_shown = 8
+        for f in file_lines[:max_shown]:
+            lines.append(f"  {f}")
+        if len(file_lines) > max_shown:
+            lines.append(f"  ... e altri {len(file_lines) - max_shown}")
 
     return "\n".join(lines)
 

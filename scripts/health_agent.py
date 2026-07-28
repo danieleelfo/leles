@@ -10,6 +10,7 @@ Pensato come base per:
   - comando Telegram "status sistema" — dashboard completa in una vista
 """
 
+import socket
 import time
 
 import httpx
@@ -24,6 +25,31 @@ def check_ollama(timeout: float = 2.0) -> bool:
     try:
         r = httpx.get(OLLAMA_URL, timeout=timeout)
         return r.status_code == 200
+    except Exception:
+        return False
+
+
+def check_model_loaded(model_name: str, timeout: float = 2.0) -> bool:
+    """
+    True se `model_name` compare tra i modelli disponibili in Ollama
+    (interroga /api/tags e cerca il nome, es. 'gemma4' matcha anche
+    'gemma4:latest'). Se Ollama stesso non risponde, ritorna False.
+    """
+    try:
+        r = httpx.get(OLLAMA_URL, timeout=timeout)
+        if r.status_code != 200:
+            return False
+        models = r.json().get("models", [])
+        return any(model_name in m.get("name", "") for m in models)
+    except Exception:
+        return False
+
+
+def check_port(port: int, host: str = "localhost", timeout: float = 1.5) -> bool:
+    """True se qualcosa sta ascoltando su `host:port` (usato per Airflow)."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
     except Exception:
         return False
 
