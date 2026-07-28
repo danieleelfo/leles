@@ -13,9 +13,9 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
     Timoniere (questo file)
        │
        ├── Git Agent       (git_agent.py — pull/status, multi-progetto:
-       │                     leles, bar_ai, lele, lele_story_whisper)
+       │                     leles, bar_ai, lele, lele_story_whisper, lele_night_story)
        ├── Process Agent    (start/stop/restart di progetti ESTERNI —
-       │                     bar_ai, lele, lele_story_whisper — in
+       │                     bar_ai, lele, lele_story_whisper, lele_night_story — in
        │                     process_agent.py. Il restart di Leles
        │                     stesso resta un caso speciale a parte in
        │                     leles_bot.py: richiede os.execv sul
@@ -26,30 +26,6 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
        ├── Query Agent      (db_agent.py, ex "DB Agent")
        ├── Health Agent     (health_agent.py)
        └── Ollama Agent     (lele_engine9.py — gemma4 + llama3 review)
-
-Uso:
-    from scripts.timoniere import route, extract_project, AGENT_GEMMA, ...
-
-    agent = route(user_input)
-    if agent == AGENT_GIT_PULL:
-        project = extract_project(user_input)
-        ...
-
-Nota sugli import: questo modulo evita import assoluti (scripts.*/core.*)
-a livello di file, perché leles_bot.py gira come script standalone con
-un sys.path diverso da quello di lele_api.py (uvicorn, root sul path) e
-deve poter importare le funzioni predicate semplici (is_restart_leles_trigger)
-senza trascinarsi dietro l'intera catena core→scripts. L'unico punto che
-ne ha davvero bisogno (is_query_trigger, per il Query Agent) lo importa
-localmente dentro route().
-
-Nota su extract_project: "lele" è cercato con confine di parola (\\blele\\b)
-per non matchare dentro "leles" o "lele_story_whisper". IMPORTANTE: "lele"
-da solo indica SEMPRE il progetto esterno Lelé (il pirata) — per riferirsi
-a questo bot (Leles) serve scrivere "leles" per esteso, oppure non
-nominare nessun progetto (default). Non c'è più una forma abbreviata
-"lele" = "leles": erano ambigue tra loro ed è meglio essere espliciti
-quando si tratta di comandi che uccidono/riavviano processi veri.
 """
 
 import re
@@ -77,11 +53,12 @@ _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirat
 # Progetti esterni gestibili da Leles (start/stop/restart, pull/status).
 # "leles" NON è qui: è il progetto corrente, gestito a parte (self-restart
 # via os.execv, niente start/stop di se stesso).
-EXTERNAL_PROJECTS = ("bar_ai", "lele_story_whisper", "lele")
+EXTERNAL_PROJECTS = ("bar_ai", "lele_story_whisper", "lele_night_story", "lele")
 
 _PROJECT_PATTERNS = {
     "bar_ai": re.compile(r"bar[_\s-]?ai", re.IGNORECASE),
-    "lele_story_whisper": re.compile(r"(lele[_\s]?)?story[_\s]?whisper", re.IGNORECASE),
+    "lele_story_whisper": re.compile(r"(lele[_\s]?)?(story[_\s]?whisper|sw)\b", re.IGNORECASE),
+    "lele_night_story": re.compile(r"(lele[_\s]?)?(night[_\s]?story|ns)\b", re.IGNORECASE),
     "lele": re.compile(r"\blele\b", re.IGNORECASE),
 }
 
@@ -91,14 +68,16 @@ _PROJECT_PATTERNS = {
 def extract_project(text: str) -> str:
     """
     Determina a quale progetto si riferisce `text`. Ordine di check
-    intenzionale: pattern più specifici (bar_ai, story_whisper) prima
-    del generico "lele" isolato, così "lele_story_whisper" non finisce
-    matchato come "lele". Default: "leles" (il progetto corrente).
+    intenzionale: pattern più specifici (bar_ai, story_whisper, night_story) prima
+    del generico "lele" isolato, così "lele_night_story" o "lele_story_whisper"
+    non finiscono matchati come "lele". Default: "leles" (il progetto corrente).
     """
     if _PROJECT_PATTERNS["bar_ai"].search(text):
         return "bar_ai"
     if _PROJECT_PATTERNS["lele_story_whisper"].search(text):
         return "lele_story_whisper"
+    if _PROJECT_PATTERNS["lele_night_story"].search(text):
+        return "lele_night_story"
     if _PROJECT_PATTERNS["lele"].search(text):
         return "lele"
     return "leles"

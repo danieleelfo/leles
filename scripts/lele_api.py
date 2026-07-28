@@ -2,7 +2,7 @@
 lele_api.py — Wrapper FastAPI per Lele Engine v9.
 
 Esegui dalla cartella principale del progetto Lelé (stessa cartella di lele_engine9.py):
-    uvicorn lele_api:app --reload --port 8001
+    uvicorn lele_api:app --reload --port 8082
 
 Il routing (quale agente gestisce quale messaggio) è delegato al
 Timoniere (scripts/timoniere.py) — qui restano solo l'esecuzione di

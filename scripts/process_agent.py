@@ -73,6 +73,36 @@ PROGETTI_CONFIG = {
             
         ],
     },
+    "lele_night_story": {
+        "path": "/Users/danny/Desktop/Danny/lele_night_story",
+        "python": "/Users/danny/Desktop/Danny/lele_night_story/.venv/bin/python3",
+        "processi": [
+            {
+                "tipo": "uvicorn",
+                "pattern": "port 8666",
+                "args": [
+                    "/Users/danny/Desktop/Danny/lele_night_story/.venv/bin/uvicorn",
+                    "scripts.lele_api:app",
+                    "--reload",
+                    "--port",
+                    "8666",
+                ],
+                "log": "uvicorn_ns.log",
+                "info": "📥 API Night Story 🌙 (porta 8666)",
+            },
+            {
+                "tipo": "python",
+                "pattern": "Danny/lele_night_story/scripts/lele_ns_bot.py",
+                "args": [
+                    "/Users/danny/Desktop/Danny/lele_night_story/.venv/bin/python3",
+                    "/Users/danny/Desktop/Danny/lele_night_story/scripts/lele_ns_bot.py",
+                ],
+                "log": "lele_ns_bot.log",
+                "info": "🤖 Bot Telegram Lelé (Night Story)",
+            },
+        ],
+    },
+
     "lele": {
         "path": "/Users/danny/Desktop/Danny/lele",
         "python": "/Users/danny/Desktop/Danny/lele/.venv/bin/python3",
