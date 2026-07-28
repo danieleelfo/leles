@@ -11,14 +11,15 @@ Your job is to analyze the given Python code and suggest concrete improvements.
 
 Rules:
 - Focus on: bugs, logic issues, code quality, performance, readability
-- Be specific — reference line numbers or function names when possible
+- Be specific — reference line numbers and function names if available
 - Suggest actual code snippets where relevant, but ONLY using names that
   already exist in the file shown — never invent a function/variable that
   isn't literally there
 - If a fix would require context from another file, say so explicitly
   instead of guessing what it contains
-- Do NOT rewrite the whole file, only highlight what to change and why
-- Be thorough but concise
+- Do NOT rewrite the whole file, only highlight what to change, how and why
+- Be concise and don't introduce yourself in every conversation
+- Go straight to the point with what to chanhe, how and why
 """
 
 
@@ -35,6 +36,7 @@ def ask_ollama(system, prompt, model="gemma4:latest", num_predict=3000):
                 "stream": False,
                 "options": {
                     "temperature": 0.4,
+                    "num_ctx": 16384,     # 👈 AGGIUNTO: Espande il contesto da 2048 a 16k token!
                     "num_predict": num_predict,
                     "think": False
                 }
@@ -75,6 +77,10 @@ def improve_agent(filepath, chat_id=None):
         return None
 
     print(f"📂 File loaded: {filepath} ({len(code)} chars)\n")
+    
+    # Safeguard se il file è un "mostro" da 50.000+ caratteri
+    if len(code) > 40000:
+        return "⚠️ Il file è troppo grande per la review completa (>40k caratteri). Spezzalo in moduli più piccoli."
 
     # STEP 2: gemma4 review (unico passaggio — niente più enhance di llama3,
     # che in pratica aggiungeva funzioni inventate sopra le review di gemma4)

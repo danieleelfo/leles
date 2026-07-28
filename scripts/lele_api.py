@@ -58,7 +58,7 @@ app = FastAPI()
 
 # Deve combaciare con ADMIN_IDS in scripts/leles_bot.py — query/esporta/improve/
 # verifica/git sono comandi di debug/analisi, riservati al capitano.
-ADMIN_IDS = [8733881519]
+ADMIN_IDS = [8733881519, 8249666123]
 
 # Agenti che richiedono privilegi admin (tutti tranne llama/gemma, che
 # restano aperti a tutti gli utenti Leles).

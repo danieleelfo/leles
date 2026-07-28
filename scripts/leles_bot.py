@@ -36,7 +36,7 @@ LELE_API_URL = os.getenv("LELE_API_URL", "http://localhost:8082/ask")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN non impostato — controlla il file .env")
 
-ADMIN_IDS = [8733881519]  # Il tuo Chat ID — unico utente autorizzato
+ADMIN_IDS = [8733881519, 8249666123]  # Il tuo Chat ID — unico utente autorizzato
 MAX_VOICE_DURATION = 5 * 60  # 5 minuti
 
 # Root del progetto (cartella che contiene scripts/), usata da "pull"/"restart"
