@@ -186,6 +186,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`uvicorn status` → controlla se tutte le API sono vive\n"
         "`telegram status` → controlla se tutti i bot sono vivi\n"
         "`status sistema` → dashboard completa (API+bot+Ollama+Postgres)\n"
+        "`status ip` → indirizzo IP pubblico attuale (rete di casa, dinamico)\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
         "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "

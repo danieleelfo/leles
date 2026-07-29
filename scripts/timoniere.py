@@ -39,6 +39,7 @@ AGENT_RESTART_EXTERNAL = "restart_process"
 AGENT_UVICORN_STATUS = "uvicorn_status"
 AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_SYSTEM_STATUS = "system_status"
+AGENT_IP_STATUS = "ip_status"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
@@ -122,6 +123,13 @@ def is_system_status_trigger(text: str) -> bool:
     return t.startswith("status sistema") or t.startswith("system status") or t.startswith("lair status")
 
 
+def is_ip_status_trigger(text: str) -> bool:
+    """'status ip' — DEVE essere controllato prima di is_git_status_trigger,
+    che è un catch-all generico su qualsiasi 'status ...'."""
+    t = text.lower().strip()
+    return t.startswith("status ip") or t.startswith("ip status")
+
+
 def is_git_pull_trigger(text: str) -> bool:
     return text.lower().strip().startswith("pull report")
 
@@ -173,6 +181,8 @@ def route(user_input: str) -> str:
         return AGENT_TELEGRAM_STATUS
     if is_system_status_trigger(text):
         return AGENT_SYSTEM_STATUS
+    if is_ip_status_trigger(text):
+        return AGENT_IP_STATUS
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

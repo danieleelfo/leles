@@ -32,7 +32,7 @@ from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_status
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status
-from scripts.health_agent import check_ollama, check_postgres, get_uptime
+from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip
 
 from scripts.timoniere import (
     route,
@@ -44,6 +44,7 @@ from scripts.timoniere import (
     AGENT_UVICORN_STATUS,
     AGENT_TELEGRAM_STATUS,
     AGENT_SYSTEM_STATUS,
+    AGENT_IP_STATUS,
     AGENT_GIT_PULL,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
@@ -170,6 +171,14 @@ def ask_lele(q: Question):
         result = system_status()
         save_memory("LELE_P_SYS_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_SYSTEM_STATUS}
+
+    if agent == AGENT_IP_STATUS:
+        print("######## HEALTH AGENT (public ip) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        ip = get_public_ip()
+        result = f"🌐 IP pubblico attuale: {ip}\n\n(rete di casa: cambia nel tempo, non salvarlo come fisso)"
+        save_memory("LELE_P_IP_S_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_IP_STATUS}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

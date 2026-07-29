@@ -18,6 +18,7 @@ import httpx
 _START_TIME = time.time()
 
 OLLAMA_URL = "http://localhost:11434/api/tags"
+_IP_SERVICES = ("https://api.ipify.org", "https://icanhazip.com")
 
 
 def check_ollama(timeout: float = 2.0) -> bool:
@@ -76,3 +77,20 @@ def get_uptime() -> str:
     hours, remainder = divmod(seconds, 3600)
     minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}m"
+
+
+def get_public_ip(timeout: float = 5.0) -> str:
+    """
+    IP pubblico attuale del Mac, utile perché su rete domestica è dinamico
+    e cambia nel tempo (a differenza di quello locale via socket, che non
+    aiuta per raggiungere il Mac da fuori casa). Prova due servizi in
+    sequenza, così un solo servizio giù non blocca il comando.
+    """
+    for url in _IP_SERVICES:
+        try:
+            r = httpx.get(url, timeout=timeout)
+            if r.status_code == 200:
+                return r.text.strip()
+        except Exception:
+            continue
+    return "impossibile recuperare l'IP pubblico (nessun servizio ha risposto)"
