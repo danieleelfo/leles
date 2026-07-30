@@ -35,6 +35,10 @@ PROJECTS = {
         "path": "/Users/danny/Desktop/Danny/lele_story_whisper",
         "label": "Story Whisper",
     },
+    "lele_night_story": {
+        "path": "/Users/danny/Desktop/Danny/lele_night_story",
+        "label": "Night Story Whisper ❤️‍🔥",
+    },
 }
 
 
