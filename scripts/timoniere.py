@@ -40,6 +40,7 @@ AGENT_UVICORN_STATUS = "uvicorn_status"
 AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_SYSTEM_STATUS = "system_status"
 AGENT_IP_STATUS = "ip_status"
+AGENT_OS_STATUS = "os_status"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
@@ -130,6 +131,13 @@ def is_ip_status_trigger(text: str) -> bool:
     return t.startswith("status ip") or t.startswith("ip status")
 
 
+def is_os_status_trigger(text: str) -> bool:
+    """'status os' — CPU/RAM/disco/uptime del Mac. Stesso motivo di
+    is_ip_status_trigger: va controllato prima del catch-all git status."""
+    t = text.lower().strip()
+    return t.startswith("status os") or t.startswith("os status") or t.startswith("status mac")
+
+
 def is_git_pull_trigger(text: str) -> bool:
     return text.lower().strip().startswith("pull report")
 
@@ -183,6 +191,8 @@ def route(user_input: str) -> str:
         return AGENT_SYSTEM_STATUS
     if is_ip_status_trigger(text):
         return AGENT_IP_STATUS
+    if is_os_status_trigger(text):
+        return AGENT_OS_STATUS
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

@@ -14,6 +14,7 @@ import socket
 import time
 
 import httpx
+import psutil
 
 _START_TIME = time.time()
 
@@ -94,3 +95,33 @@ def get_public_ip(timeout: float = 5.0) -> str:
         except Exception:
             continue
     return "impossibile recuperare l'IP pubblico (nessun servizio ha risposto)"
+
+
+def get_os_status() -> str:
+    """
+    Stato del Mac stesso (non del processo API): CPU%, RAM, disco, uptime
+    di sistema. Diverso da get_uptime(), che misura da quanto gira questo
+    specifico processo uvicorn — qui è da quanto è acceso il Mac.
+    """
+    cpu_percent = psutil.cpu_percent(interval=0.5)
+
+    mem = psutil.virtual_memory()
+    mem_used_gb = mem.used / (1024 ** 3)
+    mem_total_gb = mem.total / (1024 ** 3)
+
+    disk = psutil.disk_usage("/")
+    disk_used_gb = disk.used / (1024 ** 3)
+    disk_total_gb = disk.total / (1024 ** 3)
+
+    boot_seconds = int(time.time() - psutil.boot_time())
+    days, remainder = divmod(boot_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _ = divmod(remainder, 60)
+    uptime_str = f"{days}g {hours}h {minutes}m" if days else f"{hours}h {minutes}m"
+
+    return (
+        f"🖥️ CPU: {cpu_percent:.0f}%\n"
+        f"🧠 RAM: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB ({mem.percent:.0f}%)\n"
+        f"💾 Disco: {disk_used_gb:.1f} / {disk_total_gb:.1f} GB ({disk.percent:.0f}%)\n"
+        f"⏱️ Uptime Mac: {uptime_str}"
+    )
