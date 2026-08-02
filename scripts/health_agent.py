@@ -109,7 +109,13 @@ def get_os_status() -> str:
     mem_used_gb = mem.used / (1024 ** 3)
     mem_total_gb = mem.total / (1024 ** 3)
 
-    disk = psutil.disk_usage("/")
+    # Su macOS (APFS) "/" spesso punta al volume System (piccolo, quasi
+    # vuoto) invece del volume Data dove vivono davvero i file — leggere
+    # "/" dà numeri fuorvianti tipo "460GB liberi" su un disco quasi pieno.
+    try:
+        disk = psutil.disk_usage("/System/Volumes/Data")
+    except FileNotFoundError:
+        disk = psutil.disk_usage("/")  # fallback, es. se mai gira su Linux
     disk_used_gb = disk.used / (1024 ** 3)
     disk_total_gb = disk.total / (1024 ** 3)
 
