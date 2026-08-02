@@ -31,7 +31,7 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
-from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 
 from scripts.timoniere import (
@@ -56,6 +56,7 @@ from scripts.timoniere import (
     AGENT_QUERY,
     AGENT_LLAMA,
     AGENT_GEMMA,
+    AGENT_LOGS,
 )
 
 app = FastAPI()
@@ -81,6 +82,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_UVICORN_STATUS,
     AGENT_TELEGRAM_STATUS,
     AGENT_SYSTEM_STATUS,
+    AGENT_LOGS,
 }
 
 
@@ -175,6 +177,14 @@ def ask_lele(q: Question):
         result = system_status()
         save_memory("LELE_P_SYS_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_SYSTEM_STATUS}
+
+    if agent == AGENT_LOGS:
+        project = extract_project(user_input)
+        print(f"######## PROCESS AGENT (logs, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = get_logs(project)
+        save_memory("LELE_P_LOGS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_LOGS}
 
     if agent == AGENT_IP_STATUS:
         print("######## HEALTH AGENT (public ip) ########")

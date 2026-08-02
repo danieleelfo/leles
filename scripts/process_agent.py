@@ -454,3 +454,40 @@ def restart_leles() -> str:
     )
 
     return "✅ [LELES] Riavvio completato:\n\n" + "\n".join(steps)
+
+
+def get_logs(name: str, n_lines: int = 40) -> str:
+    """
+    Ultime n_lines di ogni file di log configurato per il progetto — utile
+    quando un processo 'parte' (start_process non verifica che resti vivo,
+    solo che il comando di lancio sia partito) ma poi crasha subito dopo,
+    e non sei al Mac per leggere il log a mano.
+    """
+    if name not in PROGETTI_CONFIG:
+        return f"❌ Progetto '{name}' non configurato."
+
+    config = PROGETTI_CONFIG[name]
+    path_progetto = config["path"]
+
+    sections = []
+    for proc in config["processi"]:
+        log_path = os.path.join(path_progetto, proc["log"])
+
+        if not os.path.exists(log_path):
+            sections.append(f"📄 {proc['info']} ({proc['log']}): file non ancora creato.")
+            continue
+
+        with open(log_path, "r", errors="replace") as f:
+            lines = f.readlines()[-n_lines:]
+
+        content = "".join(lines).strip() or "(vuoto)"
+        sections.append(f"📄 {proc['info']} ({proc['log']}):\n{content}")
+
+    result = f"🪵 Log [{name.upper()}] — ultime {n_lines} righe per file:\n\n" + "\n\n".join(sections)
+
+    # Telegram taglia a 4096 caratteri: se troppo lungo, tieni la coda
+    # (le righe più recenti, quelle utili per un crash appena successo).
+    if len(result) > 3900:
+        result = "...(troncato)...\n" + result[-3900:]
+
+    return result
