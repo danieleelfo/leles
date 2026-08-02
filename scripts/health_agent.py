@@ -107,7 +107,10 @@ def get_os_status() -> str:
     cpu_percent = psutil.cpu_percent(interval=0.5)
 
     mem = psutil.virtual_memory()
-    mem_used_gb = mem.used / (1024 ** 3)
+    # mem.used e mem.percent sono calcolati diversamente su macOS (nota
+    # limitazione psutil): usiamo total-available per i GB, coerente con
+    # come psutil calcola percent, altrimenti i due numeri si contraddicono.
+    mem_used_gb = (mem.total - mem.available) / (1024 ** 3)
     mem_total_gb = mem.total / (1024 ** 3)
 
     # Su macOS (APFS) "/" spesso punta al volume System (piccolo, quasi
@@ -145,7 +148,10 @@ def get_ram_breakdown(timeout: float = 3.0) -> str:
     leggibile da qui senza costruire un canale apposta tra i due processi.
     """
     mem = psutil.virtual_memory()
-    mem_used_gb = mem.used / (1024 ** 3)
+    # mem.used e mem.percent sono calcolati diversamente su macOS (nota
+    # limitazione psutil): usiamo total-available per i GB, coerente con
+    # come psutil calcola percent, altrimenti i due numeri si contraddicono.
+    mem_used_gb = (mem.total - mem.available) / (1024 ** 3)
     mem_total_gb = mem.total / (1024 ** 3)
 
     lines = [
