@@ -463,6 +463,29 @@ def get_logs(name: str, n_lines: int = 40) -> str:
     solo che il comando di lancio sia partito) ma poi crasha subito dopo,
     e non sei al Mac per leggere il log a mano.
     """
+    # Leles non è in PROGETTI_CONFIG (non gestisce se stessa con
+    # start/stop), ma i log sono sola lettura — nessun motivo di escluderli.
+    if name == "leles":
+        leles_logs = [
+            ("📥 API Leles", "uvicorn_restart.log"),
+            ("🤖 Bot Telegram Leles", "leles_bot_restart.log"),
+        ]
+        sections = []
+        for label, log_file in leles_logs:
+            log_path = os.path.join(LELES_PATH, log_file)
+            if not os.path.exists(log_path):
+                sections.append(f"📄 {label} ({log_file}): file non ancora creato.")
+                continue
+            with open(log_path, "r", errors="replace") as f:
+                lines = f.readlines()[-n_lines:]
+            content = "".join(lines).strip() or "(vuoto)"
+            sections.append(f"📄 {label} ({log_file}):\n{content}")
+
+        result = f"🪵 Log [LELES] — ultime {n_lines} righe per file:\n\n" + "\n\n".join(sections)
+        if len(result) > 3900:
+            result = "...(troncato)...\n" + result[-3900:]
+        return result
+
     if name not in PROGETTI_CONFIG:
         return f"❌ Progetto '{name}' non configurato."
 
