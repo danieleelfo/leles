@@ -43,6 +43,7 @@ AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
 AGENT_GIT_PULL = "git_pull"
+AGENT_GIT_PULL_FORCE = "git_pull_force"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
 AGENT_VERIFY = "verify"
@@ -145,6 +146,13 @@ def is_ram_status_trigger(text: str) -> bool:
     return t.startswith("status ram") or t.startswith("ram status")
 
 
+def is_git_pull_force_trigger(text: str) -> bool:
+    """'pull force <progetto>' — reset --hard su origin/main, per quando
+    'pull report' si pianta per branch divergenti. Comando distruttivo,
+    va tenuto ben distinto (prefisso diverso) da 'pull report'."""
+    return text.lower().strip().startswith("pull force")
+
+
 def is_git_pull_trigger(text: str) -> bool:
     return text.lower().strip().startswith("pull report")
 
@@ -202,6 +210,8 @@ def route(user_input: str) -> str:
         return AGENT_OS_STATUS
     if is_ram_status_trigger(text):
         return AGENT_RAM_STATUS
+    if is_git_pull_force_trigger(text):
+        return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

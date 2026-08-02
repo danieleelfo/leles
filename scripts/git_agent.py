@@ -67,6 +67,35 @@ def git_pull(project: str = "leles") -> str:
     return f"{prefix} Pull {label} terminato:\n\n{output}"
 
 
+def git_pull_force(project: str = "leles") -> str:
+    """
+    fetch + reset --hard origin/main — per quando 'pull report' si pianta
+    per branch divergenti (es. history riscritta altrove) e non sei al
+    Mac per risolverlo a mano. ATTENZIONE: distruttivo, butta via
+    qualsiasi modifica locale non pushata sul progetto indicato.
+    """
+    path = _project_path(project)
+    if not path:
+        return f"❌ Progetto sconosciuto: '{project}'. Disponibili: {', '.join(PROJECTS)}"
+
+    fetch_result = subprocess.run(
+        ["git", "fetch", "origin"],
+        cwd=path, capture_output=True, text=True, timeout=30,
+    )
+    if fetch_result.returncode != 0:
+        return f"❌ Fetch fallito:\n\n{fetch_result.stderr.strip()}"
+
+    reset_result = subprocess.run(
+        ["git", "reset", "--hard", "origin/main"],
+        cwd=path, capture_output=True, text=True, timeout=15,
+    )
+
+    output = (reset_result.stdout + reset_result.stderr).strip() or "(nessun output)"
+    prefix = "✅" if reset_result.returncode == 0 else "❌"
+    label = PROJECTS[project]["label"]
+    return f"{prefix} Pull FORZATO {label} terminato (locale allineato a origin/main):\n\n{output}"
+
+
 def git_status(project: str = "leles") -> str:
     """Branch corrente + ultimo commit + eventuali modifiche locali non committate."""
     path = _project_path(project)

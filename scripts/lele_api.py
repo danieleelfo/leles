@@ -30,7 +30,7 @@ from scripts.lele_engine9 import (
 
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
-from scripts.git_agent import git_pull, git_status
+from scripts.git_agent import git_pull, git_pull_force, git_status
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 
@@ -48,6 +48,7 @@ from scripts.timoniere import (
     AGENT_OS_STATUS,
     AGENT_RAM_STATUS,
     AGENT_GIT_PULL,
+    AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
     AGENT_VERIFY,
@@ -71,6 +72,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_EXPORT,
     AGENT_QUERY,
     AGENT_GIT_PULL,
+    AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
     AGENT_RESTART_LELES,
     AGENT_START,
@@ -203,6 +205,14 @@ def ask_lele(q: Question):
         result = git_pull(project)
         save_memory("LELE_GIT_PULL_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_PULL}
+
+    if agent == AGENT_GIT_PULL_FORCE:
+        project = extract_project(user_input)
+        print(f"######## GIT AGENT (pull FORCE, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = git_pull_force(project)
+        save_memory("LELE_GIT_PULLF_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_GIT_PULL_FORCE}
 
     if agent == AGENT_GIT_STATUS:
         project = extract_project(user_input)
