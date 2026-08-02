@@ -41,6 +41,7 @@ AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_SYSTEM_STATUS = "system_status"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
+AGENT_RAM_STATUS = "ram_status"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_STATUS = "git_status"
 AGENT_IMPROVE = "improve"
@@ -138,6 +139,12 @@ def is_os_status_trigger(text: str) -> bool:
     return t.startswith("status os") or t.startswith("os status") or t.startswith("status mac")
 
 
+def is_ram_status_trigger(text: str) -> bool:
+    """'status ram' — breakdown RAM + modelli Ollama caricati."""
+    t = text.lower().strip()
+    return t.startswith("status ram") or t.startswith("ram status")
+
+
 def is_git_pull_trigger(text: str) -> bool:
     return text.lower().strip().startswith("pull report")
 
@@ -193,6 +200,8 @@ def route(user_input: str) -> str:
         return AGENT_IP_STATUS
     if is_os_status_trigger(text):
         return AGENT_OS_STATUS
+    if is_ram_status_trigger(text):
+        return AGENT_RAM_STATUS
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
     if is_git_status_trigger(text):

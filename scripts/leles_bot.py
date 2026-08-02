@@ -188,6 +188,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`status sistema` → dashboard completa (API+bot+Ollama+Postgres)\n"
         "`status ip` → indirizzo IP pubblico attuale (rete di casa, dinamico)\n"
         "`status os` → CPU/RAM/disco/uptime del Mac\n"
+        "`status ram` → breakdown RAM + modelli Ollama caricati\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
         "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "

@@ -19,6 +19,7 @@ import psutil
 _START_TIME = time.time()
 
 OLLAMA_URL = "http://localhost:11434/api/tags"
+OLLAMA_PS_URL = "http://localhost:11434/api/ps"
 _IP_SERVICES = ("https://api.ipify.org", "https://icanhazip.com")
 
 
@@ -131,3 +132,46 @@ def get_os_status() -> str:
         f"💾 Disco: {disk_used_gb:.1f} / {disk_total_gb:.1f} GB ({disk.percent:.0f}%)\n"
         f"⏱️ Uptime Mac: {uptime_str}"
     )
+
+
+def get_ram_breakdown(timeout: float = 3.0) -> str:
+    """
+    RAM totale del Mac + quali modelli Ollama sono caricati in questo
+    momento e quanto pesano — il colpevole più probabile quando 'status
+    os' mostra RAM alta, dato che gemma4/llama3 insieme superano i 14GB.
+
+    Nota: non include i modelli Piper (TTS) — quella cache vive nel
+    processo del bot Telegram, non in questo processo API, quindi non è
+    leggibile da qui senza costruire un canale apposta tra i due processi.
+    """
+    mem = psutil.virtual_memory()
+    mem_used_gb = mem.used / (1024 ** 3)
+    mem_total_gb = mem.total / (1024 ** 3)
+
+    lines = [
+        f"🧠 RAM totale: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB ({mem.percent:.0f}%)",
+        "",
+    ]
+
+    try:
+        r = httpx.get(OLLAMA_PS_URL, timeout=timeout)
+        r.raise_for_status()
+        models = r.json().get("models", [])
+
+        if not models:
+            lines.append("🦙 Ollama: nessun modello caricato in RAM al momento.")
+        else:
+            lines.append("🦙 Modelli Ollama in RAM ora:")
+            total_ollama_gb = 0.0
+            for m in models:
+                size_gb = m.get("size", 0) / (1024 ** 3)
+                total_ollama_gb += size_gb
+                lines.append(f"  • {m.get('name', '?')}: {size_gb:.1f} GB")
+            lines.append(f"  Totale Ollama: {total_ollama_gb:.1f} GB")
+    except Exception as e:
+        lines.append(f"🦙 Ollama: impossibile leggere i modelli caricati ({e})")
+
+    lines.append("")
+    lines.append("(Piper/TTS non incluso: vive nel processo del bot, non in questo)")
+
+    return "\n".join(lines)
