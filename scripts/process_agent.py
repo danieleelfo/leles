@@ -531,16 +531,27 @@ def get_tts_status(name: str) -> str:
         return f"❌ Progetto '{name}' non configurato."
 
     voices_dir = os.path.join(path_progetto, "voices")
+    alt_voices_dir = os.path.join(path_progetto, "scripts", "voices")
 
-    if not os.path.isdir(voices_dir):
-        return f"🔊 [{name.upper()}]: cartella 'voices/' non trovata — nessun modello scaricato ancora."
+    onnx_files = []
+    found_in = None
 
-    onnx_files = sorted(f for f in os.listdir(voices_dir) if f.endswith(".onnx"))
+    if os.path.isdir(voices_dir):
+        onnx_files = sorted(f for f in os.listdir(voices_dir) if f.endswith(".onnx"))
+        found_in = "voices/"
+
+    if not onnx_files and os.path.isdir(alt_voices_dir):
+        onnx_files = sorted(f for f in os.listdir(alt_voices_dir) if f.endswith(".onnx"))
+        if onnx_files:
+            found_in = "scripts/voices/ ⚠️ POSIZIONE SBAGLIATA — il codice cerca in voices/ dalla root, non qui"
 
     if not onnx_files:
-        return f"🔊 [{name.upper()}]: cartella 'voices/' vuota — nessun modello Piper installato."
+        return (
+            f"🔊 [{name.upper()}]: nessun modello Piper trovato né in 'voices/' "
+            f"né in 'scripts/voices/'."
+        )
 
-    lines = [f"🔊 Voci Piper installate [{name.upper()}] ({len(onnx_files)}):"]
+    lines = [f"🔊 Voci Piper installate [{name.upper()}] ({len(onnx_files)}) — trovate in {found_in}:"]
     for f in onnx_files:
         lines.append(f"  • {f}")
 
