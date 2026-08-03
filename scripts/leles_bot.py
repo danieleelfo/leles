@@ -190,6 +190,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`status os` → CPU/RAM/disco/uptime del Mac\n"
         "`status ram` → breakdown RAM + modelli Ollama caricati\n"
         "`status tts <progetto>` → voci Piper installate per quel progetto\n"
+        "`directory <progetto> [sottocartella]` → elenca file/cartelle (es. 'directory ns voices')\n"
         "`logs <progetto>` → ultime righe dei log (es. 'logs ns'), utile se un processo parte e crasha subito\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"

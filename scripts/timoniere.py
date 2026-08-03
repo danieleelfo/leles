@@ -41,6 +41,7 @@ AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_SYSTEM_STATUS = "system_status"
 AGENT_LOGS = "logs"
 AGENT_TTS_STATUS = "tts_status"
+AGENT_DIRECTORY = "directory"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -140,6 +141,28 @@ def is_tts_status_trigger(text: str) -> bool:
     return t.startswith("status tts") or t.startswith("tts status")
 
 
+def is_directory_trigger(text: str) -> bool:
+    """'directory <progetto> [sottocartella]' / 'ls <progetto> [sottocartella]'."""
+    t = text.lower().strip()
+    return t.startswith("directory ") or t.startswith("ls ")
+
+
+def parse_directory_subpath(text: str) -> str:
+    """
+    Estrae l'eventuale sottocartella da 'directory <progetto> [subpath]'.
+    Assume che il primo token dopo il trigger sia il progetto (es. 'ns',
+    'leles') e tutto il resto sia il subpath — coerente con come vengono
+    sempre usati gli alias di progetto in questo bot (un solo token).
+    """
+    t = text.strip()
+    for prefix in ("directory ", "ls "):
+        if t.lower().startswith(prefix):
+            rest = t[len(prefix):].strip()
+            parts = rest.split(None, 1)
+            return parts[1] if len(parts) > 1 else ""
+    return ""
+
+
 def is_ip_status_trigger(text: str) -> bool:
     """'status ip' — DEVE essere controllato prima di is_git_status_trigger,
     che è un catch-all generico su qualsiasi 'status ...'."""
@@ -228,6 +251,8 @@ def route(user_input: str) -> str:
         return AGENT_RAM_STATUS
     if is_tts_status_trigger(text):
         return AGENT_TTS_STATUS
+    if is_directory_trigger(text):
+        return AGENT_DIRECTORY
     if is_git_pull_force_trigger(text):
         return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):

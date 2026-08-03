@@ -556,3 +556,63 @@ def get_tts_status(name: str) -> str:
         lines.append(f"  • {f}")
 
     return "\n".join(lines)
+
+
+_DIR_EXCLUDE = {".git", ".venv", "__pycache__", "node_modules", ".DS_Store"}
+
+
+def get_directory_listing(name: str, subpath: str = "", max_depth: int = 1) -> str:
+    """
+    ls-like: elenca file e sottocartelle (2 livelli di profondità) di un
+    progetto, o di una sua sottocartella specifica — per verificare a
+    colpo d'occhio se dei file esistono davvero, senza aspettare di
+    essere al Mac (nato dal caso 'voices/ non trovata' di stasera).
+    """
+    if name == "leles":
+        base = LELES_PATH
+    elif name in PROGETTI_CONFIG:
+        base = PROGETTI_CONFIG[name]["path"]
+    else:
+        return f"❌ Progetto '{name}' non configurato."
+
+    target = os.path.normpath(os.path.join(base, subpath) if subpath else base)
+    base_norm = os.path.normpath(base)
+
+    # Sicurezza: impedisce di uscire dalla cartella del progetto con ../..
+    if not (target == base_norm or target.startswith(base_norm + os.sep)):
+        return "❌ Path non valido (fuori dalla cartella del progetto)."
+
+    if not os.path.exists(target):
+        return f"❌ [{name.upper()}] Percorso non trovato: {subpath or '(root)'}"
+
+    if not os.path.isdir(target):
+        size = os.path.getsize(target)
+        return f"📄 [{name.upper()}] {subpath} — file singolo, {size / 1024:.0f}KB"
+
+    lines = [f"📁 [{name.upper()}]{'/' + subpath if subpath else ''}"]
+
+    def _list(path, prefix, depth):
+        try:
+            entries = sorted(os.listdir(path))
+        except PermissionError:
+            lines.append(f"{prefix}⛔ permesso negato")
+            return
+        for entry in entries:
+            if entry in _DIR_EXCLUDE:
+                continue
+            full = os.path.join(path, entry)
+            if os.path.isdir(full):
+                lines.append(f"{prefix}📁 {entry}/")
+                if depth < max_depth:
+                    _list(full, prefix + "  ", depth + 1)
+            else:
+                size = os.path.getsize(full)
+                size_str = f"{size / 1024:.0f}KB" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f}MB"
+                lines.append(f"{prefix}📄 {entry} ({size_str})")
+
+    _list(target, "  ", 0)
+
+    result = "\n".join(lines)
+    if len(result) > 3900:
+        result = result[:3900] + "\n...(troncato — prova con una sottocartella più specifica)"
+    return result
