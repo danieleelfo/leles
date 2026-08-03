@@ -98,6 +98,16 @@ def get_public_ip(timeout: float = 5.0) -> str:
     return "impossibile recuperare l'IP pubblico (nessun servizio ha risposto)"
 
 
+def _ram_used_total_gb(mem) -> tuple:
+    """
+    (used_gb, total_gb), calcolati in modo coerente con mem.percent.
+    mem.used e mem.percent sono calcolati diversamente su macOS (nota
+    limitazione psutil): usiamo total-available per i GB, altrimenti i
+    due numeri si contraddicono (es. "7.2GB" ma "87%").
+    """
+    return (mem.total - mem.available) / (1024 ** 3), mem.total / (1024 ** 3)
+
+
 def get_os_status() -> str:
     """
     Stato del Mac stesso (non del processo API): CPU%, RAM, disco, uptime
@@ -107,11 +117,7 @@ def get_os_status() -> str:
     cpu_percent = psutil.cpu_percent(interval=0.5)
 
     mem = psutil.virtual_memory()
-    # mem.used e mem.percent sono calcolati diversamente su macOS (nota
-    # limitazione psutil): usiamo total-available per i GB, coerente con
-    # come psutil calcola percent, altrimenti i due numeri si contraddicono.
-    mem_used_gb = (mem.total - mem.available) / (1024 ** 3)
-    mem_total_gb = mem.total / (1024 ** 3)
+    mem_used_gb, mem_total_gb = _ram_used_total_gb(mem)
 
     # Su macOS (APFS) "/" spesso punta al volume System (piccolo, quasi
     # vuoto) invece del volume Data dove vivono davvero i file — leggere
@@ -148,11 +154,7 @@ def get_ram_breakdown(timeout: float = 3.0) -> str:
     leggibile da qui senza costruire un canale apposta tra i due processi.
     """
     mem = psutil.virtual_memory()
-    # mem.used e mem.percent sono calcolati diversamente su macOS (nota
-    # limitazione psutil): usiamo total-available per i GB, coerente con
-    # come psutil calcola percent, altrimenti i due numeri si contraddicono.
-    mem_used_gb = (mem.total - mem.available) / (1024 ** 3)
-    mem_total_gb = mem.total / (1024 ** 3)
+    mem_used_gb, mem_total_gb = _ram_used_total_gb(mem)
 
     lines = [
         f"🧠 RAM totale: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB ({mem.percent:.0f}%)",
