@@ -14,6 +14,7 @@ li ha lanciati.
 """
 
 import os
+import shutil
 import subprocess
 import time
 
@@ -616,3 +617,62 @@ def get_directory_listing(name: str, subpath: str = "", max_depth: int = 1) -> s
     if len(result) > 3900:
         result = result[:3900] + "\n...(troncato — prova con una sottocartella più specifica)"
     return result
+
+
+def _resolve_project_path(name: str):
+    if name == "leles":
+        return LELES_PATH
+    if name in PROGETTI_CONFIG:
+        return PROGETTI_CONFIG[name]["path"]
+    return None
+
+
+def copy_tts_voices(source: str, dest: str) -> str:
+    """
+    Copia tutti i modelli voce Piper (.onnx + .onnx.json) da voices/ di
+    un progetto a voices/ di un altro, creando la cartella di destinazione
+    se non esiste. Non sovrascrive file già presenti — idempotente, si
+    può rilanciare senza rischi.
+    """
+    source_base = _resolve_project_path(source)
+    dest_base = _resolve_project_path(dest)
+
+    if not source_base:
+        return f"❌ Progetto sorgente '{source}' non configurato."
+    if not dest_base:
+        return f"❌ Progetto destinazione '{dest}' non configurato."
+
+    source_voices = os.path.join(source_base, "voices")
+    dest_voices = os.path.join(dest_base, "voices")
+
+    if not os.path.isdir(source_voices):
+        return f"❌ '{source}' non ha una cartella voices/ da cui copiare."
+
+    os.makedirs(dest_voices, exist_ok=True)
+
+    copied, skipped = [], []
+
+    for fname in sorted(os.listdir(source_voices)):
+        if not (fname.endswith(".onnx") or fname.endswith(".onnx.json")):
+            continue
+        src_file = os.path.join(source_voices, fname)
+        dst_file = os.path.join(dest_voices, fname)
+        if os.path.exists(dst_file):
+            skipped.append(fname)
+            continue
+        shutil.copy2(src_file, dst_file)
+        copied.append(fname)
+
+    lines = [f"🔊 Copia voci {source.upper()} → {dest.upper()}:"]
+
+    if copied:
+        lines.append(f"✅ Copiati ({len(copied)}):")
+        lines.extend(f"  • {f}" for f in copied)
+    else:
+        lines.append("Nessun file nuovo da copiare.")
+
+    if skipped:
+        base_names = sorted({f.replace(".onnx.json", "").replace(".onnx", "") for f in skipped})
+        lines.append(f"⏭️ Già presenti in {dest.upper()}, saltati ({len(base_names)}): " + ", ".join(base_names))
+
+    return "\n".join(lines)

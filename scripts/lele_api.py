@@ -31,13 +31,14 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
-from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 
 from scripts.timoniere import (
     route,
     extract_project,
     parse_directory_subpath,
+    parse_tts_copy_args,
     AGENT_RESTART_LELES,
     AGENT_START,
     AGENT_STOP,
@@ -50,6 +51,7 @@ from scripts.timoniere import (
     AGENT_RAM_STATUS,
     AGENT_TTS_STATUS,
     AGENT_DIRECTORY,
+    AGENT_TTS_COPY,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
@@ -227,6 +229,21 @@ def ask_lele(q: Question):
         result = get_directory_listing(project, subpath)
         save_memory("LELE_P_DIR_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_DIRECTORY}
+
+    if agent == AGENT_TTS_COPY:
+        raw_source, raw_dest = parse_tts_copy_args(user_input)
+        source = extract_project(raw_source) if raw_source else None
+        dest = extract_project(raw_dest) if raw_dest else None
+        print(f"######## PROCESS AGENT (tts copy, {source} -> {dest}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not source or not dest:
+            result = "❌ Uso: 'tts copy <sorgente> <destinazione>' (es. 'tts copy sw ns')"
+        else:
+            result = copy_tts_voices(source, dest)
+
+        save_memory("LELE_P_TTSCOPY_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_TTS_COPY}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

@@ -42,6 +42,7 @@ AGENT_SYSTEM_STATUS = "system_status"
 AGENT_LOGS = "logs"
 AGENT_TTS_STATUS = "tts_status"
 AGENT_DIRECTORY = "directory"
+AGENT_TTS_COPY = "tts_copy"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -145,6 +146,22 @@ def is_directory_trigger(text: str) -> bool:
     """'directory <progetto> [sottocartella]' / 'ls <progetto> [sottocartella]'."""
     t = text.lower().strip()
     return t.startswith("directory ") or t.startswith("ls ")
+
+
+def is_tts_copy_trigger(text: str) -> bool:
+    """'tts copy <sorgente> <destinazione>'."""
+    return text.lower().strip().startswith("tts copy")
+
+
+def parse_tts_copy_args(text: str):
+    """'tts copy sw ns' -> ('sw', 'ns'), risolti poi con extract_project."""
+    t = text.strip()
+    if t.lower().startswith("tts copy"):
+        rest = t[len("tts copy"):].strip()
+        parts = rest.split()
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+    return None, None
 
 
 def parse_directory_subpath(text: str) -> str:
@@ -253,6 +270,8 @@ def route(user_input: str) -> str:
         return AGENT_TTS_STATUS
     if is_directory_trigger(text):
         return AGENT_DIRECTORY
+    if is_tts_copy_trigger(text):
+        return AGENT_TTS_COPY
     if is_git_pull_force_trigger(text):
         return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):
