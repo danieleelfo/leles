@@ -40,6 +40,7 @@ AGENT_UVICORN_STATUS = "uvicorn_status"
 AGENT_TELEGRAM_STATUS = "telegram_status"
 AGENT_SYSTEM_STATUS = "system_status"
 AGENT_LOGS = "logs"
+AGENT_TTS_STATUS = "tts_status"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -133,6 +134,12 @@ def is_logs_trigger(text: str) -> bool:
     return t.startswith("logs ") or t.startswith("log ")
 
 
+def is_tts_status_trigger(text: str) -> bool:
+    """'status tts <progetto>' — modelli voce Piper installati per un progetto."""
+    t = text.lower().strip()
+    return t.startswith("status tts") or t.startswith("tts status")
+
+
 def is_ip_status_trigger(text: str) -> bool:
     """'status ip' — DEVE essere controllato prima di is_git_status_trigger,
     che è un catch-all generico su qualsiasi 'status ...'."""
@@ -219,6 +226,8 @@ def route(user_input: str) -> str:
         return AGENT_OS_STATUS
     if is_ram_status_trigger(text):
         return AGENT_RAM_STATUS
+    if is_tts_status_trigger(text):
+        return AGENT_TTS_STATUS
     if is_git_pull_force_trigger(text):
         return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):

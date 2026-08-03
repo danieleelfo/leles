@@ -514,3 +514,34 @@ def get_logs(name: str, n_lines: int = 40) -> str:
         result = "...(troncato)...\n" + result[-3900:]
 
     return result
+
+
+def get_tts_status(name: str) -> str:
+    """
+    Elenca i modelli voce Piper (.onnx) realmente presenti in voices/ per
+    un progetto — utile perché ogni progetto ha una sua cartella voices/
+    separata (non tracciata da git), quindi un modello scaricato per uno
+    non è automaticamente disponibile per gli altri.
+    """
+    if name == "leles":
+        path_progetto = LELES_PATH
+    elif name in PROGETTI_CONFIG:
+        path_progetto = PROGETTI_CONFIG[name]["path"]
+    else:
+        return f"❌ Progetto '{name}' non configurato."
+
+    voices_dir = os.path.join(path_progetto, "voices")
+
+    if not os.path.isdir(voices_dir):
+        return f"🔊 [{name.upper()}]: cartella 'voices/' non trovata — nessun modello scaricato ancora."
+
+    onnx_files = sorted(f for f in os.listdir(voices_dir) if f.endswith(".onnx"))
+
+    if not onnx_files:
+        return f"🔊 [{name.upper()}]: cartella 'voices/' vuota — nessun modello Piper installato."
+
+    lines = [f"🔊 Voci Piper installate [{name.upper()}] ({len(onnx_files)}):"]
+    for f in onnx_files:
+        lines.append(f"  • {f}")
+
+    return "\n".join(lines)

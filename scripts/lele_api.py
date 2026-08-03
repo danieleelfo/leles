@@ -31,7 +31,7 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
-from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 
 from scripts.timoniere import (
@@ -47,6 +47,7 @@ from scripts.timoniere import (
     AGENT_IP_STATUS,
     AGENT_OS_STATUS,
     AGENT_RAM_STATUS,
+    AGENT_TTS_STATUS,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
@@ -207,6 +208,14 @@ def ask_lele(q: Question):
         result = get_ram_breakdown()
         save_memory("LELE_P_RAM_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_RAM_STATUS}
+
+    if agent == AGENT_TTS_STATUS:
+        project = extract_project(user_input)
+        print(f"######## HEALTH AGENT (tts status, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = get_tts_status(project)
+        save_memory("LELE_P_TTS_S_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_TTS_STATUS}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)
