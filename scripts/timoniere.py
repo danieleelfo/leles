@@ -43,6 +43,7 @@ AGENT_LOGS = "logs"
 AGENT_TTS_STATUS = "tts_status"
 AGENT_DIRECTORY = "directory"
 AGENT_TTS_COPY = "tts_copy"
+AGENT_TTS_INSTALL = "tts_install"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -151,6 +152,22 @@ def is_directory_trigger(text: str) -> bool:
 def is_tts_copy_trigger(text: str) -> bool:
     """'tts copy <sorgente> <destinazione>'."""
     return text.lower().strip().startswith("tts copy")
+
+
+def is_tts_install_trigger(text: str) -> bool:
+    """'tts install <progetto> <nome_modello>'."""
+    return text.lower().strip().startswith("tts install")
+
+
+def parse_tts_install_args(text: str):
+    """'tts install ns pt_BR-faber-medium' -> ('ns', 'pt_BR-faber-medium')."""
+    t = text.strip()
+    if t.lower().startswith("tts install"):
+        rest = t[len("tts install"):].strip()
+        parts = rest.split()
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+    return None, None
 
 
 def parse_tts_copy_args(text: str):
@@ -272,6 +289,8 @@ def route(user_input: str) -> str:
         return AGENT_DIRECTORY
     if is_tts_copy_trigger(text):
         return AGENT_TTS_COPY
+    if is_tts_install_trigger(text):
+        return AGENT_TTS_INSTALL
     if is_git_pull_force_trigger(text):
         return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):

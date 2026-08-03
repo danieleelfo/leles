@@ -31,7 +31,7 @@ from scripts.lele_engine9 import (
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
-from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices
+from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 
 from scripts.timoniere import (
@@ -39,6 +39,7 @@ from scripts.timoniere import (
     extract_project,
     parse_directory_subpath,
     parse_tts_copy_args,
+    parse_tts_install_args,
     AGENT_RESTART_LELES,
     AGENT_START,
     AGENT_STOP,
@@ -52,6 +53,7 @@ from scripts.timoniere import (
     AGENT_TTS_STATUS,
     AGENT_DIRECTORY,
     AGENT_TTS_COPY,
+    AGENT_TTS_INSTALL,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
@@ -88,6 +90,8 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_TELEGRAM_STATUS,
     AGENT_SYSTEM_STATUS,
     AGENT_LOGS,
+    AGENT_TTS_COPY,
+    AGENT_TTS_INSTALL,
 }
 
 
@@ -244,6 +248,20 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_TTSCOPY_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_TTS_COPY}
+
+    if agent == AGENT_TTS_INSTALL:
+        raw_project, model_name = parse_tts_install_args(user_input)
+        project = extract_project(raw_project) if raw_project else None
+        print(f"######## PROCESS AGENT (tts install, project={project}, model={model_name}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not project or not model_name:
+            result = "❌ Uso: 'tts install <progetto> <nome_modello>' (es. 'tts install ns pt_BR-faber-medium')"
+        else:
+            result = install_tts_voice(project, model_name)
+
+        save_memory("LELE_P_TTSINST_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_TTS_INSTALL}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

@@ -192,6 +192,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`status tts <progetto>` → voci Piper installate per quel progetto\n"
         "`directory <progetto> [sottocartella]` → elenca file/cartelle (es. 'directory ns voices')\n"
         "`tts copy <sorgente> <destinazione>` → copia le voci Piper tra due progetti (es. 'tts copy sw ns')\n"
+        "`tts install <progetto> <nome_modello>` → scarica una voce Piper (solo tra quelle configurate nel progetto)\n"
         "`logs <progetto>` → ultime righe dei log (es. 'logs ns'), utile se un processo parte e crasha subito\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"

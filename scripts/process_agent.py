@@ -14,6 +14,7 @@ li ha lanciati.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -676,3 +677,71 @@ def copy_tts_voices(source: str, dest: str) -> str:
         lines.append(f"⏭️ Già presenti in {dest.upper()}, saltati ({len(base_names)}): " + ", ".join(base_names))
 
     return "\n".join(lines)
+
+
+def _get_allowed_voice_models(project: str) -> set:
+    """
+    Legge scripts/tts_engine.py del progetto ed estrae i nomi dei modelli
+    voce configurati (i default dentro os.getenv(...)) — whitelist dinamica
+    per install_tts_voice, letta dal codice reale invece che hardcoded qui
+    (così resta sempre allineata a quello che il progetto usa davvero).
+    """
+    base = _resolve_project_path(project)
+    if not base:
+        return set()
+
+    tts_engine_path = os.path.join(base, "scripts", "tts_engine.py")
+    if not os.path.exists(tts_engine_path):
+        return set()
+
+    with open(tts_engine_path, "r", errors="replace") as f:
+        content = f.read()
+
+    matches = re.findall(r'os\.getenv\("TTS_VOICE_MODEL_[A-Z]{2}",\s*"([^"]+)"\)', content)
+    return set(matches)
+
+
+def install_tts_voice(project: str, model_name: str) -> str:
+    """
+    Scarica un modello voce Piper per un progetto — SOLO se model_name è
+    tra le voci effettivamente configurate in quel progetto (whitelist
+    letta da tts_engine.py, non testo libero passato al downloader).
+    """
+    base = _resolve_project_path(project)
+    if not base:
+        return f"❌ Progetto '{project}' non configurato."
+
+    allowed = _get_allowed_voice_models(project)
+    if not allowed:
+        return f"❌ Non riesco a leggere le voci configurate per '{project}' (tts_engine.py mancante o non leggibile)."
+
+    if model_name not in allowed:
+        return (
+            f"❌ '{model_name}' non è tra le voci configurate per {project.upper()}.\n"
+            f"Voci valide: {', '.join(sorted(allowed))}"
+        )
+
+    voices_dir = os.path.join(base, "voices")
+    os.makedirs(voices_dir, exist_ok=True)
+
+    if project == "leles":
+        python_bin = os.path.join(LELES_PATH, ".venv", "bin", "python3")
+    elif project in PROGETTI_CONFIG:
+        python_bin = PROGETTI_CONFIG[project]["python"]
+    else:
+        python_bin = os.path.join(base, ".venv", "bin", "python3")
+
+    result = subprocess.run(
+        [python_bin, "-m", "piper.download_voices", "--download-dir", "voices", model_name],
+        cwd=base,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+
+    output = (result.stdout + result.stderr).strip() or "(nessun output)"
+    if len(output) > 3500:
+        output = output[-3500:]
+
+    prefix = "✅" if result.returncode == 0 else "❌"
+    return f"{prefix} Download voce '{model_name}' per {project.upper()}:\n\n{output}"
