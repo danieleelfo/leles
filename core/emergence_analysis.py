@@ -78,7 +78,7 @@ def analyze_run(
     model_to_study="ALL",
     trait_to_study="Coerenza del ruolo, capacita critica ed evoluzione delle proposte",
     max_iterations=5,
-    judge_model="gemma4",
+    judge_model="mistral",
     judge_role="Esperto di Sistemi Multi-Agente ed Ingegneria del Software"
 ):
     """

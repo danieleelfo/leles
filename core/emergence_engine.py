@@ -372,6 +372,7 @@ def run_experiment(run_id, num_iterations, initial_world_state=None, temperature
         )
         if observer_turn:
             world_state = {
+                **world_state,  # mantiene scenario, execution_date, ecc.
                 "iteration": i,
                 "notes": observer_turn["response"][:2000],
             }
