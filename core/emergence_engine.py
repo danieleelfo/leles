@@ -18,6 +18,47 @@ Questo modulo non dipende da Airflow: è testabile/eseguibile standalone.
 I DAG in dags/ lo chiamano come task Python.
 """
 
+PROJECT_CONTEXT = """
+# LELES PROJECT CONTEXT
+
+You are collaborating on the LELES project.
+
+Current architecture:
+
+- Python 3.14
+- FastAPI backend
+- PostgreSQL database (psycopg2)
+- Airflow 3.3 orchestration
+- Ollama local models
+- macOS development environment
+
+Important project rules:
+
+- NEVER propose SQLite.
+- NEVER propose MySQL.
+- NEVER replace PostgreSQL.
+- NEVER redesign the project architecture.
+- NEVER invent a different tech stack.
+- Reuse existing modules whenever possible.
+- Prefer modifying existing files instead of creating new ones.
+- Assume database, authentication and infrastructure already exist.
+- Produce production-ready code.
+- Focus only on the requested improvement.
+
+This is an EXISTING production project.
+
+Your goal is to improve the existing code.
+
+Whenever possible:
+
+- modify existing files
+- extend existing classes
+- reuse existing functions
+
+Avoid creating new files unless explicitly requested.
+"""
+
+
 import json
 import random
 import logging
@@ -242,23 +283,52 @@ def save_metric(iteration_id, metric_name, metric_value, agent_id=None, model_id
 # ==========================================================
 
 def build_broadcast_prompt(world_state, transcript_so_far, agent_name):
-    """
-    transcript_so_far: lista di dict {'agent_name':.., 'response':..}
-    già prodotti in QUESTA iterazione, in ordine di turno.
-    """
-    lines = [f"World state:\n{json.dumps(world_state or {}, ensure_ascii=False, indent=2)}\n"]
+    lines = []
+
+    lines.append(PROJECT_CONTEXT)
+
+    lines.append(
+        "\n# YOUR ROLE\n"
+        f"You are acting as the {agent_name}.\n"
+        "Stay consistent with your assigned personality.\n"
+    )
+
+    if world_state.get("source_code"):
+        lines.append(
+            "\n# EXISTING SOURCE CODE\n"
+            "The following is the REAL source code of the project.\n"
+            "Improve it without changing the architecture.\n"
+            "Modify existing code instead of inventing new projects.\n\n"
+            f"{world_state['source_code']}\n"
+        )
+
+    lines.append(
+        "\n# WORLD STATE\n"
+        f"{json.dumps(world_state or {}, ensure_ascii=False, indent=2)}\n"
+    )
 
     if transcript_so_far:
-        lines.append("Messaggi già scritti in questa iterazione (in ordine):")
+        lines.append("\n# CURRENT ITERATION DISCUSSION\n")
         for turn in transcript_so_far:
-            lines.append(f"[{turn['agent_name']}]: {turn['response']}")
+            lines.append(
+                f"[{turn['agent_name']}]\n"
+                f"{turn['response']}\n"
+            )
     else:
-        lines.append("Sei il primo a parlare in questa iterazione.")
+        lines.append("\nYou are the first agent speaking in this iteration.\n")
 
-    lines.append(f"\nOra tocca a te, {agent_name}. Rispondi in coerenza con il tuo ruolo.")
+    lines.append(
+        "\n# YOUR TASK\n"
+        "Continue the discussion.\n"
+        "Do NOT repeat previous answers.\n"
+        "Build upon previous reasoning.\n"
+        "Respect the existing architecture.\n"
+        "Do NOT invent files, APIs, databases or frameworks.\n"
+        "Modify existing files whenever possible.\n"
+        "Be concise, practical and production-ready.\n"
+    )
 
     return "\n".join(lines)
-
 
 # ==========================================================
 # TURNO SINGOLO AGENTE

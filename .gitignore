@@ -4,6 +4,7 @@ __pycache__/
 voices/
 .venv/
 tmp_tts/
+AI_TMP/
 *.wav
 *.ogg
 logs/*.log
