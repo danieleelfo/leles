@@ -2,9 +2,9 @@
 core/emergence_analysis.py
 ==========================
 Modulo per l'analisi dei risultati delle simulazioni (LLM-as-a-Judge).
+Supporta il filtraggio per Ruolo (target_role), Modello (model_to_study) e la personalizzazione della Persona del Giudice.
 """
 
-import json
 import logging
 from core.db import get_connection
 from core.llm import query_model
@@ -12,9 +12,9 @@ from core.llm import query_model
 logger = logging.getLogger(__name__)
 
 
-def get_run_messages(run_id, model_to_study="ALL", max_iterations=None):
+def get_run_messages(run_id, target_role="ALL", model_to_study="ALL", max_iterations=None):
     """
-    Estrae dal DB i messaggi di una specifica Run, con opzioni di filtraggio.
+    Estrae dal DB i messaggi di una specifica Run, applicando i filtri per Ruolo, Modello e Iterazioni.
     """
     conn = get_connection()
     cur = conn.cursor()
@@ -35,10 +35,17 @@ def get_run_messages(run_id, model_to_study="ALL", max_iterations=None):
     """
     params = [run_id]
 
+    # Filtro per Ruolo (es. 'Planner', 'Critic', 'Builder', 'Scientist', 'Observer')
+    if target_role and target_role.upper() != "ALL":
+        query += " AND LOWER(a.name) = LOWER(%s)"
+        params.append(target_role)
+
+    # Filtro per Modello specifico
     if model_to_study and model_to_study.upper() != "ALL":
-        query += " AND m.name = %s"
+        query += " AND LOWER(m.name) = LOWER(%s)"
         params.append(model_to_study)
 
+    # Limite iterazioni
     if max_iterations:
         query += " AND i.iteration_number <= %s"
         params.append(max_iterations)
@@ -65,38 +72,70 @@ def get_run_messages(run_id, model_to_study="ALL", max_iterations=None):
     return messages
 
 
-def analyze_run(run_id, model_to_study="ALL", trait_to_study="Coerenza e capacità critica",
-                max_iterations=5, judge_model="gemma4"):
+def analyze_run(
+    run_id,
+    target_role="ALL",
+    model_to_study="ALL",
+    trait_to_study="Coerenza del ruolo, capacita critica ed evoluzione delle proposte",
+    max_iterations=5,
+    judge_model="gemma4",
+    judge_role="Esperto di Sistemi Multi-Agente ed Ingegneria del Software"
+):
     """
-    Formatta i dati estratti e chiama l'LLM Giudice per produrre un'analisi strutturata.
+    Formatta i dati estratti e chiama l'LLM Giudice con logging trasparente di query, dati e prompt.
     """
-    logger.info(f"📊 Avvio analisi per Run ID: {run_id}")
+    logger.info(f"📊 Avvio analisi per Run ID: {run_id} | Focus Ruolo: {target_role} | Giudice: {judge_model}")
     
-    messages = get_run_messages(run_id, model_to_study, max_iterations)
+    # 1. Estrazione dati
+    messages = get_run_messages(
+        run_id=run_id,
+        target_role=target_role,
+        model_to_study=model_to_study,
+        max_iterations=max_iterations
+    )
 
     if not messages:
         raise ValueError(f"Nessun messaggio trovato per la Run ID {run_id} con i filtri applicati.")
 
-    # Costruzione trascrizione per il Giudice
+    # 🔍 LOG DEI DATI ESTRATTI
+    logger.info(f"📦 Dati estratti dal DB per l'analisi ({len(messages)} messaggi trovati):")
+    for msg in messages:
+        logger.info(
+            f"   • [Iterazione {msg['iteration']}] Agente: {msg['agent_name']} | "
+            f"Modello: {msg['model_name']} | Tokens: {msg['total_tokens']} | Durata: {msg['duration_ms']}ms"
+        )
+
+    # 2. Costruzione trascrizione
     transcript_lines = []
     for msg in messages:
         transcript_lines.append(
-            f"[Iterazione {msg['iteration']}] Agente: {msg['agent_name']} | Modello: {msg['model_name']}\n"
-            f"Risposta: {msg['response']}\n"
+            f"[Iterazione {msg['iteration']}] Ruolo/Agente: {msg['agent_name']} | Modello Usato: {msg['model_name']}\n"
+            f"Risposta:\n{msg['response']}\n"
             f"--------------------------------------------------"
         )
     transcript_text = "\n".join(transcript_lines)
 
-    # Prompt per il Giudice
-    system_prompt = """
-Sei un esperto analista di sistemi multi-agente e comportamento emergente delle IA.
-Il tuo compito è analizzare la trascrizione dell'esperimento fornito e produrre un report critico e strutturato.
-Sii analitico, oggettivo e fornisci esempi concreti presi dalle risposte.
+    # 3. Istruzione di Focus
+    if target_role and target_role.upper() != "ALL":
+        focus_instruction = f"""
+STAI ANALIZZANDO ESCLUSIVAMENTE IL RUOLO: '{target_role.upper()}'.
+Nella trascrizione vedrai solo gli interventi del ruolo '{target_role}', eseguiti da modelli diversi nelle varie iterazioni.
+Valuta come le diverse risposte del {target_role} hanno fatto avanzare la discussione, se il ruolo è stato mantenuto coerente tra i vari modelli e quale modello ha interpretato meglio questo ruolo.
+"""
+    else:
+        focus_instruction = "Stai analizzando l'interazione globale tra tutti i ruoli e la dinamica di gruppo."
+
+    system_prompt = f"""
+Sei un {judge_role}.
+{focus_instruction}
+Il tuo compito è analizzare la trascrizione dell'esperimento fornito e produrre un report critico, rigoroso e strutturato.
+Sii analitico, ogjektivo e cita esempi concreti presi dalle risposte.
 """
 
     prompt = f"""
 === DATI ESPERIMENTO (RUN ID: {run_id}) ===
-Modello sotto analisi: {model_to_study}
+Ruolo sotto analisi: {target_role}
+Modello specifico sotto analisi: {model_to_study}
 Carattere / Comportamento da studiare: {trait_to_study}
 Iterazioni esaminate: fino alla {max_iterations}
 
@@ -107,20 +146,28 @@ Iterazioni esaminate: fino alla {max_iterations}
 Fornisci un report dettagliato rispondendo ai seguenti punti:
 
 1. **Valutazione del Carattere/Comportamento ('{trait_to_study}'):** 
-   Come si sono comportati gli agenti (o il modello '{model_to_study}') rispetto a questo parametro?
-2. **Coerenza con il Ruolo:** I ruoli (Planner, Scientist, Builder, Critic, Observer) sono stati mantenuti o ci sono state sovrapposizioni?
-3. **Punti di Forza ed Errori Riscontrati:** Quali sono stati i passaggi più brillanti o le allucinazioni/cicli infiniti?
-4. **Conclusioni ed Esercizio di Sintesi:** Che comportamento emergente è scaturito dalla simulazione?
-5. **Voto Complessivo (1-10):** Assegna un punteggio alla qualità della discussione.
+   Come si sono comportati gli interventi estratti rispetto a questo parametro?
+2. **Coerenza e Performance del Ruolo ('{target_role}'):** 
+   Il ruolo è stato mantenuto saldamente nei vari passaggi? Se ci sono stati modelli diversi ad eseguirlo, chi ha performato meglio?
+3. **Punti di Forza ed Errori Riscontrati:** Quali sono stati i passaggi più brillanti, o al contrario ridondanze, allucinazioni e stalli?
+4. **Conclusioni e Comportamento Emergente:** Che evoluzione o pattern è emerso analizzando questa sequenza?
+5. **Voto Complessivo (1-10):** Assegna un punteggio globale alla qualità di questi contributi.
 """
 
-    logger.info(f"🧠 Invio richiesta di analisi al Giudice: {judge_model}...")
+    # 🔍 LOG DEL PROMPT COMPLETO
+    logger.info("\n" + "📝 " + "="*30 + " SYSTEM PROMPT " + "="*30)
+    logger.info(system_prompt.strip())
+    logger.info("\n" + "📄 " + "="*30 + " PROMPT INVIATO AL GIUDICE " + "="*30)
+    logger.info(prompt.strip())
+    logger.info("="*80 + "\n")
+
+    logger.info(f"🧠 Invio richiesta di analisi al Giudice ({judge_model})...")
     
     result = query_model(
         model_name=judge_model,
         prompt=prompt,
         system_prompt=system_prompt,
-        temperature=0.3  # Temperatura bassa per una valutazione più oggettiva
+        temperature=0.3
     )
 
     return result["response"]
