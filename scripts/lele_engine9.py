@@ -75,7 +75,7 @@ def ask_model(model, prompt, retries=2):
                     "options": {
                         "temperature": 0.7,
                         "num_ctx": 16384,      # <-- AUMENTA LA FINESTRA DI CONTESTO (es. 16384)
-                        "num_predict": 4096,   # <-- AUMENTA LO SPAZIO PER LA RISPOSTA
+                        "num_predict": 8192,   # <-- AUMENTA LO SPAZIO PER LA RISPOSTA
                         "think": False
                     }
                 },
