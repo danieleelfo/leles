@@ -197,7 +197,13 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
         temperature=0.3
     )
 
-    report = result["response"]
+    # 1. Recupero sicuro della risposta con fallback
+    report = result.get("response") if isinstance(result, dict) else None
+
+    # 2. Controllo se la risposta dell'LLM è vuota o None
+    if not report:
+        logger.error(f"❌ La chiamata a query_model per il modello {judge_model} ha restituito None o vuoto!")
+        return f"❌ ERRORE: Il modello Giudice '{judge_model}' non ha generato alcuna risposta (possibile timeout API o risposta vuota)."
 
     if judge_participated:
         report = (
