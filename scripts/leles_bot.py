@@ -80,6 +80,8 @@ AGENT_LABELS = {
     "uvicorn_status": "🔍 Process Agent",
     "telegram_status": "🔍 Process Agent",
     "system_status": "🖥️ Health Agent",
+    "airflow_trigger": "🌀 Airflow Agent",
+    "airflow_trigger_disabled": "🌀 Airflow Agent ❌",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",

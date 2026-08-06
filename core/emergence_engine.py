@@ -60,7 +60,7 @@ def create_experiment(name, description=""):
     conn.commit()
     cur.close()
     conn.close()
-    logger.info(f"🧪 Experiment creato: id={exp_id} name={name} Contesto: {system_prompt}")
+    logger.info(f"🧪 Experiment creato: id={exp_id} name={name} Contesto: {description}")
     return exp_id
 
 

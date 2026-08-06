@@ -10,7 +10,8 @@ Flusso:
                              ritorna JSON {"dag_id": ..., "conf": {...}}
         │
         ▼
-    trigger_dag_run()     — POST REST API Airflow, autenticato Basic Auth
+    trigger_dag_run()     — POST REST API Airflow v2, autenticato con JWT
+                             (ottenuto al volo da /auth/token)
 
 Config attesa in .env:
     AIRFLOW_BASE_URL   default: http://localhost:8085
@@ -40,17 +41,36 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3:latest"  # coerente con db_agent.py
 
 # --- Registro DAG conosciuti -------------------------------------------------
-# COMPILA QUESTO con i dag_id reali. Ogni voce aiuta l'LLM a:
+# Ogni voce aiuta l'LLM a:
 #   1. scegliere il dag_id giusto invece di inventarlo
 #   2. sapere quali chiavi mettere in "conf" e con che tipo
+# Tipi/default presi da dags/emergence_dag.py e dags/emergence_pipeline_dag.py.
+#
+# NOTA: emergence_pipeline_dag.py chiama internamente anche un DAG
+# "emergence_lab_analysis" via TriggerDagRunOperator, ma quel file DAG
+# non è ancora stato condiviso qui — se esiste ed è pensato per essere
+# lanciabile anche da solo (non solo come step interno della pipeline),
+# aggiungilo a questo registro con i suoi param.
 KNOWN_DAGS = {
-    # "nome_dag_reale": {
-    #     "description": "cosa fa, in una riga",
-    #     "params": {"param1": "str", "param2": "int (opzionale)"},
-    # },
-    "test_dag": {
-        "description": "DAG di test/smoke, nessun parametro richiesto",
-        "params": {},
+    "emergence_dag": {
+        "description": "Lancia una simulazione multi-agente concettuale e produce un audit di coerenza (LLM-as-a-Judge). Se target_run_id è 0 crea una nuova run, altrimenti rianalizza una run esistente.",
+        "params": {
+            "target_run_id": "int, default 0 (0 = nuova run, >0 = riusa una run esistente)",
+            "scenario": "str, default 'Progettazione dell'architettura di coordinamento agenti'",
+            "num_iterations": "int, default 3",
+            "temperature": "float, default 0.7",
+            "seed": "int, default 42",
+            "judge_model": "str, default 'qwen2.5'",
+        },
+    },
+    "emergence_full_pipeline": {
+        "description": "Pipeline completa: lancia una nuova simulazione (emergence_dag) e poi triggera l'analisi (emergence_lab_analysis) passandole il run_id restituito.",
+        "params": {
+            "scenario": "str, default 'Progettazione dell'architettura di coordinamento agenti'",
+            "num_iterations": "int, default 3",
+            "judge_model": "str, default 'qwen2.5'",
+            "target_role": "str, default 'ALL' (es. 'Planner', 'Critic', 'Builder', 'Scientist', 'Observer')",
+        },
     },
 }
 
@@ -124,20 +144,53 @@ def extract_dag_params(user_text: str):
     return dag_id, conf, None
 
 
+def _get_jwt_token():
+    """
+    Airflow 3 richiede un JWT per il Public API — niente più Basic Auth
+    diretta sull'endpoint dagRuns (ecco il 405 di prima: si stava ancora
+    chiamando /api/v1 con Basic Auth, deprecato in Airflow 3). Il token si
+    ottiene con POST /auth/token usando AIRFLOW_USERNAME/AIRFLOW_PASSWORD.
+    Ritorna (token, errore).
+    """
+    try:
+        response = requests.post(
+            f"{AIRFLOW_BASE_URL}/auth/token",
+            json={"username": AIRFLOW_USERNAME, "password": AIRFLOW_PASSWORD},
+            timeout=10,
+        )
+        response.raise_for_status()
+        token = response.json().get("access_token")
+        if not token:
+            return None, "Risposta /auth/token senza access_token"
+        return token, None
+    except requests.exceptions.ConnectionError:
+        return None, f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "?"
+        return None, f"❌ Login Airflow fallito ({status}): controlla AIRFLOW_USERNAME/AIRFLOW_PASSWORD nel .env"
+    except Exception as e:
+        return None, f"❌ Errore ottenendo il JWT da Airflow: {e}"
+
+
 def trigger_dag_run(dag_id: str, conf: dict):
     """
-    POST /api/v1/dags/{dag_id}/dagRuns — Airflow REST API stabile (v1).
-    dag_run_id generato lato client per poterlo riportare subito all'utente
-    senza dover fare un secondo giro a leggere lo stato.
+    POST /api/v2/dags/{dag_id}/dagRuns — Public API di Airflow 3 (sostituisce
+    /api/v1, rimossa in Airflow 3.x). Richiede un JWT Bearer, ottenuto al
+    volo da _get_jwt_token(). dag_run_id generato lato client per poterlo
+    riportare subito all'utente senza un secondo giro a leggere lo stato.
     """
+    token, error = _get_jwt_token()
+    if error:
+        return False, error
+
     dag_run_id = f"leles_{uuid.uuid4().hex[:8]}"
-    url = f"{AIRFLOW_BASE_URL}/api/v1/dags/{dag_id}/dagRuns"
+    url = f"{AIRFLOW_BASE_URL}/api/v2/dags/{dag_id}/dagRuns"
 
     try:
         response = requests.post(
             url,
-            json={"dag_run_id": dag_run_id, "conf": conf},
-            auth=(AIRFLOW_USERNAME, AIRFLOW_PASSWORD),
+            json={"dag_run_id": dag_run_id, "conf": conf, "logical_date": None},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=15,
         )
     except requests.exceptions.ConnectionError:
@@ -149,8 +202,8 @@ def trigger_dag_run(dag_id: str, conf: dict):
         return True, dag_run_id
     if response.status_code == 404:
         return False, f"❌ DAG '{dag_id}' non trovato su Airflow (controlla che sia unpaused/deployato)"
-    if response.status_code == 401:
-        return False, "❌ Autenticazione Airflow fallita (controlla AIRFLOW_USERNAME/AIRFLOW_PASSWORD nel .env)"
+    if response.status_code in (401, 403):
+        return False, f"❌ Token Airflow rifiutato ({response.status_code}) — l'utente ha i permessi per lanciare DAG?"
     return False, f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
 
 
