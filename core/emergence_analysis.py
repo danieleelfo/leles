@@ -78,7 +78,7 @@ def analyze_run(
     model_to_study="ALL",
     trait_to_study="Coerenza del ruolo, capacita critica ed evoluzione delle proposte",
     max_iterations=5,
-    judge_model="mistral",
+    judge_model="deepseek-r1",
     judge_role="Esperto di Sistemi Multi-Agente ed Ingegneria del Software"
 ):
     """
@@ -177,7 +177,7 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
 2. **Coerenza e Performance del Ruolo ('{target_role}'):** 
    Il ruolo è stato mantenuto saldamente nei vari passaggi? Se ci sono stati modelli diversi ad eseguirlo, chi ha performato meglio?
 3. **Punti di Forza ed Errori Riscontrati:** Quali sono stati i passaggi più brillanti, o al contrario ridondanze, allucinazioni e stalli?
-4. **Conclusioni e Comportamento Emergente:** Che evoluzione o pattern è emerso analizzando questa sequenza?
+4. **Conclusioni e Comportamento Emergente:** Che evoluzione o pattern è emerso analizzando questa sequenza? Quale modello é più adatto ad ogni ruolo?
 5. **Voto Complessivo (1-10):** Assegna un punteggio globale alla qualità di questi contributi.
 """
 
