@@ -13,6 +13,8 @@ def query_model(model_name: str, prompt: str, system_prompt: str = None, tempera
         "prompt": prompt,
         "stream": False,
         "options": {
+            "num_ctx": 16384,
+            "num_predict": 4096,
             "temperature": temperature
         }
     }

@@ -55,6 +55,7 @@ AGENT_VERIFY = "verify"
 AGENT_EXPORT = "export"
 AGENT_QUERY = "query"
 AGENT_LLAMA = "llama_review"
+AGENT_AIRFLOW = "airflow_trigger"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
 _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirata")
@@ -249,6 +250,22 @@ def is_llama_trigger(text: str) -> bool:
     return any(word in lowered for word in _LLAMA_WORDS)
 
 
+def is_airflow_trigger(text: str) -> bool:
+    """'exec airflow <richiesta in linguaggio naturale>' — l'estrazione dei
+    parametri del DAG è delegata a un LLM dentro airflow_agent.py, NON qui:
+    il Timoniere resta puro pattern matching, solo il match del trigger."""
+    return text.lower().strip().startswith("exec airflow")
+
+
+def parse_airflow_command(text: str) -> str:
+    """'exec airflow lancia il test_dag' -> 'lancia il test_dag' (passato
+    poi ad airflow_agent per l'estrazione LLM di dag_id/conf)."""
+    t = text.strip()
+    if t.lower().startswith("exec airflow"):
+        return t[len("exec airflow"):].strip()
+    return ""
+
+
 # --- Router vero e proprio ---------------------------------------------------
 
 def route(user_input: str) -> str:
@@ -269,6 +286,8 @@ def route(user_input: str) -> str:
         return AGENT_START
     if is_stop_trigger(text):
         return AGENT_STOP
+    if is_airflow_trigger(text):
+        return AGENT_AIRFLOW
     if is_uvicorn_status_trigger(text):
         return AGENT_UVICORN_STATUS
     if is_telegram_status_trigger(text):

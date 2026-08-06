@@ -33,6 +33,7 @@ from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
+from scripts.airflow_agent import airflow_agent
 
 from scripts.timoniere import (
     route,
@@ -40,6 +41,8 @@ from scripts.timoniere import (
     parse_directory_subpath,
     parse_tts_copy_args,
     parse_tts_install_args,
+    parse_airflow_command,
+    AGENT_AIRFLOW,
     AGENT_RESTART_LELES,
     AGENT_START,
     AGENT_STOP,
