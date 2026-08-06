@@ -97,6 +97,17 @@ def analyze_run(
     if not messages:
         raise ValueError(f"Nessun messaggio trovato per la Run ID {run_id} con i filtri applicati.")
 
+    # 🔍 Conflitto d'interesse: il giudice ha generato lui stesso alcune
+    # delle risposte che sta per valutare? Prima non veniva mai controllato.
+    models_in_transcript = {msg["model_name"].lower() for msg in messages}
+    judge_participated = judge_model.lower() in models_in_transcript
+
+    if judge_participated:
+        logger.warning(
+            f"⚠️ Il giudice '{judge_model}' ha generato risposte presenti in questa "
+            f"trascrizione — possibile conflitto d'interesse nel giudizio."
+        )
+
     # 🔍 LOG DEI DATI ESTRATTI
     logger.info(f"📦 Dati estratti dal DB per l'analisi ({len(messages)} messaggi trovati):")
     for msg in messages:
@@ -125,11 +136,27 @@ Valuta come le diverse risposte del {target_role} hanno fatto avanzare la discus
     else:
         focus_instruction = "Stai analizzando l'interazione globale tra tutti i ruoli e la dinamica di gruppo."
 
+    conflict_warning = ""
+    if judge_participated:
+        conflict_warning = f"""
+ATTENZIONE — CONFLITTO D'INTERESSE: alcune delle risposte che stai per valutare
+sono state generate da te stesso ({judge_model}), in un turno precedente di questo
+stesso esperimento. Sii consapevole di questo bias potenziale: non essere
+automaticamente più indulgente con le risposte del tuo stesso modello. Se noti
+che le tue risposte passate hanno debolezze, dillo esplicitamente.
+"""
+
     system_prompt = f"""
 Sei un {judge_role}.
 {focus_instruction}
+{conflict_warning}
 Il tuo compito è analizzare la trascrizione dell'esperimento fornito e produrre un report critico, rigoroso e strutturato.
-Sii analitico, ogjektivo e cita esempi concreti presi dalle risposte.
+Sii analitico, oggettivo e cita esempi concreti presi dalle risposte.
+
+REGOLA OBBLIGATORIA SULLE CITAZIONI: ogni punto della tua analisi che si riferisce
+a un intervento specifico deve includere almeno una citazione testuale tra
+virgolette (max 20-25 parole), seguita da (Iterazione N, modello). Frasi vaghe
+come "esempio: Iterazione 2 e 3" senza citazione testuale non sono accettabili.
 """
 
     prompt = f"""
@@ -170,4 +197,13 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
         temperature=0.3
     )
 
-    return result["response"]
+    report = result["response"]
+
+    if judge_participated:
+        report = (
+            f"⚠️ **Nota metodologica**: il giudice ({judge_model}) ha generato "
+            f"alcune delle risposte analizzate in questo report — possibile "
+            f"conflitto d'interesse, leggi con cautela.\n\n{report}"
+        )
+
+    return report
