@@ -1,21 +1,13 @@
 """
-airflow_agent.py — Trigger di DAG Airflow via REST API, con estrazione
-parametri in linguaggio naturale via LLM (Ollama).
-
-Flusso:
-    "exec airflow <richiesta in linguaggio naturale>"
-        │
-        ▼
-    extract_dag_params()  — LLM (Ollama) legge KNOWN_DAGS + richiesta,
-                             ritorna JSON {"dag_id": ..., "conf": {...}}
-        │
-        ▼
-    trigger_dag_run()     — POST REST API Airflow, autenticato Basic Auth
+airflow_agent.py — Trigger e status di DAG Airflow via REST API (JWT, v2 —
+Airflow 3.x), con estrazione parametri in linguaggio naturale via LLM (Ollama)
+per il trigger.
 
 Config attesa in .env:
     AIRFLOW_BASE_URL   default: http://localhost:8085
-    AIRFLOW_USERNAME
-    AIRFLOW_PASSWORD
+    AIRFLOW_USERNAME   opzionale — se assente, fallback automatico alla
+    AIRFLOW_PASSWORD   password auto-generata dal Simple Auth Manager
+                       ($AIRFLOW_HOME/simple_auth_manager_passwords.json.generated)
 
 ATTENZIONE: KNOWN_DAGS qui sotto è un placeholder — va compilato con i
 dag_id reali del tuo Airflow (Admin > DAGs) e i parametri che ciascuno
@@ -26,6 +18,7 @@ qualsiasi dag_id non presente in questo dizionario, vedi extract_dag_params).
 
 import os
 import json
+import time
 import uuid
 import requests
 from dotenv import load_dotenv
@@ -33,25 +26,112 @@ from dotenv import load_dotenv
 load_dotenv()
 
 AIRFLOW_BASE_URL = os.getenv("AIRFLOW_BASE_URL", "http://localhost:8085")
-AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME", "airflow")
-AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD", "airflow")
+AIRFLOW_HOME = os.getenv("AIRFLOW_HOME", os.path.expanduser("~/airflow"))
+_PASSWORDS_FILE = os.path.join(AIRFLOW_HOME, "simple_auth_manager_passwords.json.generated")
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3:latest"  # coerente con db_agent.py
+
+_token_cache = {"token": None, "expires_at": 0}
+
+
+def _get_credentials():
+    """
+    AIRFLOW_USERNAME/PASSWORD dal .env se presenti, altrimenti fallback
+    automatico alla password auto-generata dal Simple Auth Manager
+    (default di Airflow 3.x se non hai configurato nulla di custom).
+    """
+    user = os.getenv("AIRFLOW_USERNAME")
+    password = os.getenv("AIRFLOW_PASSWORD")
+    if user and password:
+        return user, password
+
+    if os.path.exists(_PASSWORDS_FILE):
+        try:
+            with open(_PASSWORDS_FILE) as f:
+                data = json.load(f)
+            if "admin" in data:
+                return "admin", data["admin"]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return None, None
+
+
+def _get_token(force_refresh: bool = False) -> str:
+    """JWT per l'API v2 — POST /auth/token, cache con margine sotto la scadenza."""
+    if not force_refresh and _token_cache["token"] and time.time() < _token_cache["expires_at"]:
+        return _token_cache["token"]
+
+    user, password = _get_credentials()
+    if not user:
+        raise RuntimeError(
+            "Credenziali Airflow non trovate: imposta AIRFLOW_USERNAME/AIRFLOW_PASSWORD "
+            f"nel .env, oppure verifica che esista {_PASSWORDS_FILE}."
+        )
+
+    response = requests.post(
+        f"{AIRFLOW_BASE_URL}/auth/token",
+        json={"username": user, "password": password},
+        timeout=10,
+    )
+    response.raise_for_status()
+    data = response.json()
+    token = data.get("access_token") or data.get("token")
+    if not token:
+        raise RuntimeError(f"Risposta /auth/token senza campo token riconosciuto: {data}")
+
+    _token_cache["token"] = token
+    _token_cache["expires_at"] = time.time() + 55 * 60  # margine sotto la scadenza tipica (1h)
+    return token
+
+
+def _api_request(method: str, path: str, json_body: dict = None, retry: bool = True):
+    """Chiamata autenticata all'API v2, con un retry automatico se il token è scaduto (401)."""
+    token = _get_token()
+    response = requests.request(
+        method,
+        f"{AIRFLOW_BASE_URL}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=json_body,
+        timeout=15,
+    )
+
+    if response.status_code == 401 and retry:
+        token = _get_token(force_refresh=True)
+        response = requests.request(
+            method,
+            f"{AIRFLOW_BASE_URL}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+            json=json_body,
+            timeout=15,
+        )
+
+    return response
 
 # --- Registro DAG conosciuti -------------------------------------------------
 # COMPILA QUESTO con i dag_id reali. Ogni voce aiuta l'LLM a:
 #   1. scegliere il dag_id giusto invece di inventarlo
 #   2. sapere quali chiavi mettere in "conf" e con che tipo
 KNOWN_DAGS = {
-    # "nome_dag_reale": {
-    #     "description": "cosa fa, in una riga",
-    #     "params": {"param1": "str", "param2": "int (opzionale)"},
-    # },
+    "emergence_lab_analysis": {
+        "description": "Analizza una run dell'esperimento Emergence Lab con un LLM giudice",
+        "params": {
+            "run_id": "int",
+            "target_role": "str (opzionale, es. 'Critic' — default 'ALL')",
+            "judge_model": "str (opzionale, default 'mistral')",
+        },
+    },
+    "note_organizer": {
+        "description": "DAG notturno che categorizza i file di dettatura vocale per keyword nel nome file",
+        "params": {},
+    },
     "test_dag": {
         "description": "DAG di test/smoke, nessun parametro richiesto",
         "params": {},
     },
+    # Manca ancora il DAG che lancia l'esperimento vero e proprio
+    # (emergence_engine.py) — se ha un suo dag_id separato, aggiungilo qui.
 }
 
 SYSTEM_EXTRACT = """You are a router that converts a natural language request into a JSON
@@ -126,22 +206,22 @@ def extract_dag_params(user_text: str):
 
 def trigger_dag_run(dag_id: str, conf: dict):
     """
-    POST /api/v1/dags/{dag_id}/dagRuns — Airflow REST API stabile (v1).
-    dag_run_id generato lato client per poterlo riportare subito all'utente
-    senza dover fare un secondo giro a leggere lo stato.
+    POST /api/v2/dags/{dag_id}/dagRuns — Airflow REST API v2 (JWT), quella
+    valida per Airflow 3.x. dag_run_id generato lato client per poterlo
+    riportare subito all'utente senza un secondo giro a leggere lo stato.
     """
     dag_run_id = f"leles_{uuid.uuid4().hex[:8]}"
-    url = f"{AIRFLOW_BASE_URL}/api/v1/dags/{dag_id}/dagRuns"
 
     try:
-        response = requests.post(
-            url,
-            json={"dag_run_id": dag_run_id, "conf": conf},
-            auth=(AIRFLOW_USERNAME, AIRFLOW_PASSWORD),
-            timeout=15,
+        response = _api_request(
+            "POST",
+            f"/api/v2/dags/{dag_id}/dagRuns",
+            json_body={"dag_run_id": dag_run_id, "conf": conf},
         )
     except requests.exceptions.ConnectionError:
         return False, f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
+    except RuntimeError as e:
+        return False, f"❌ {e}"
     except Exception as e:
         return False, f"❌ Errore di rete verso Airflow: {e}"
 
@@ -150,7 +230,7 @@ def trigger_dag_run(dag_id: str, conf: dict):
     if response.status_code == 404:
         return False, f"❌ DAG '{dag_id}' non trovato su Airflow (controlla che sia unpaused/deployato)"
     if response.status_code == 401:
-        return False, "❌ Autenticazione Airflow fallita (controlla AIRFLOW_USERNAME/AIRFLOW_PASSWORD nel .env)"
+        return False, "❌ Autenticazione Airflow fallita (credenziali sbagliate o token non accettato)"
     return False, f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
 
 
@@ -179,3 +259,76 @@ def airflow_agent(user_text: str) -> str:
 
     conf_str = json.dumps(conf, ensure_ascii=False) if conf else "{}"
     return f"🌀 DAG '{dag_id}' lanciato — run_id: {result}\nconf: {conf_str}"
+
+
+# --- Status (sola lettura, nessun LLM coinvolto — deterministico) -----------
+
+_STATE_EMOJI = {
+    "success": "✅",
+    "failed": "❌",
+    "running": "🔄",
+    "queued": "⏳",
+    "up_for_retry": "🔁",
+    "upstream_failed": "⛔",
+}
+
+
+def get_dag_runs_status(dag_id: str, limit: int = 5) -> str:
+    """Ultime run di un DAG specifico: stato, orario, durata."""
+    try:
+        response = _api_request(
+            "GET",
+            f"/api/v2/dags/{dag_id}/dagRuns?limit={limit}&order_by=-start_date",
+        )
+    except requests.exceptions.ConnectionError:
+        return f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
+    except RuntimeError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        return f"❌ Errore di rete verso Airflow: {e}"
+
+    if response.status_code == 404:
+        return f"❌ DAG '{dag_id}' non trovato su Airflow."
+    if response.status_code != 200:
+        return f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
+
+    runs = response.json().get("dag_runs", [])
+    if not runs:
+        return f"🌀 Nessuna run trovata per il DAG '{dag_id}'."
+
+    lines = [f"🌀 Ultime {len(runs)} run di '{dag_id}':"]
+    for run in runs:
+        state = run.get("state", "?")
+        emoji = _STATE_EMOJI.get(state, "❔")
+        start = (run.get("start_date") or "—")[:19].replace("T", " ")
+        end_raw = run.get("end_date")
+        end = end_raw[:19].replace("T", " ") if end_raw else "in corso"
+        lines.append(f"{emoji} {run.get('dag_run_id', '?')} | {state} | {start} → {end}")
+
+    return "\n".join(lines)
+
+
+def get_all_dags_status() -> str:
+    """Elenco di tutti i DAG con stato pausa/attivo — panoramica generale."""
+    try:
+        response = _api_request("GET", "/api/v2/dags?limit=100")
+    except requests.exceptions.ConnectionError:
+        return f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
+    except RuntimeError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        return f"❌ Errore di rete verso Airflow: {e}"
+
+    if response.status_code != 200:
+        return f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
+
+    dags = response.json().get("dags", [])
+    if not dags:
+        return "🌀 Nessun DAG trovato."
+
+    lines = ["🌀 DAG disponibili:"]
+    for d in sorted(dags, key=lambda x: x.get("dag_id", "")):
+        paused = "⏸️ pausa" if d.get("is_paused") else "▶️ attivo"
+        lines.append(f"  • {d.get('dag_id')} ({paused})")
+
+    return "\n".join(lines)
