@@ -82,6 +82,8 @@ AGENT_LABELS = {
     "system_status": "🖥️ Health Agent",
     "airflow_trigger": "🌀 Airflow Agent",
     "airflow_trigger_disabled": "🌀 Airflow Agent ❌",
+    "synthesize": "📄 Synthesizer Agent",
+    "synthesize_disabled": "📄 Synthesizer Agent ❌",
     "empty": "⚓ Lelé 🏴‍☠️",
     "improve_disabled": "🔧 Improve",
     "verify_disabled": "❌ Verify",

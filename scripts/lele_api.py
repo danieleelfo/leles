@@ -34,6 +34,7 @@ from scripts.git_agent import git_pull, git_pull_force, git_status
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 from scripts.airflow_agent import airflow_agent
+from core.artifact_synthesizer import generate_final_artifacts
 
 from scripts.timoniere import (
     route,
@@ -42,7 +43,9 @@ from scripts.timoniere import (
     parse_tts_copy_args,
     parse_tts_install_args,
     parse_airflow_command,
+    parse_synthesize_args,
     AGENT_AIRFLOW,
+    AGENT_SYNTHESIZE,
     AGENT_RESTART_LELES,
     AGENT_START,
     AGENT_STOP,
@@ -79,6 +82,7 @@ ADMIN_IDS = [8733881519, 8249666123]
 # restano aperti a tutti gli utenti Leles).
 _ADMIN_ONLY_AGENTS = {
     AGENT_AIRFLOW,
+    AGENT_SYNTHESIZE,
     AGENT_IMPROVE,
     AGENT_VERIFY,
     AGENT_EXPORT,
@@ -346,6 +350,22 @@ def ask_lele(q: Question):
         save_memory("LELE_EXPORT_ES", result, chat_id=q.chat_id)
 
         return {"answer": result, "type": AGENT_EXPORT}
+
+    if agent == AGENT_SYNTHESIZE:
+        run_id, mode = parse_synthesize_args(user_input)
+        print(f"######## ARTIFACT SYNTHESIZER (run_id={run_id}, mode={mode}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not run_id:
+            result = "❌ Uso: 'sintetizza <run_id>' per un documento riassuntivo, o 'sintetizza codice <run_id>' per i file di codice finali."
+        else:
+            try:
+                result = generate_final_artifacts(run_id=run_id, mode=mode)
+            except ValueError as e:
+                result = f"❌ {e}"
+
+        save_memory("LELE_SYNTH_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_SYNTHESIZE}
 
     if agent == AGENT_LLAMA:
         print("######## OLLAMA AGENT (llama review) ########")

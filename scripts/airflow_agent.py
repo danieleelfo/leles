@@ -141,6 +141,7 @@ KNOWN_DAGS = {
             "temperature": "float, default 0.7",
             "seed": "int, default 42",
             "judge_model": "str, default 'qwen2.5'",
+            "pipeline_config": "str (JSON), opzionale, default '{}' — solo se l'utente chiede ESPLICITAMENTE ruoli/modelli/visibilità custom (es. 'usa solo Planner e Designer', 'modelli fissi'). Altrimenti ometti questa chiave.",
         },
     },
     "emergence_lab_analysis": {

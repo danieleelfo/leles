@@ -2,7 +2,13 @@
 core/artifact_synthesizer.py
 ============================
 Modulo per la sintesi finale della simulazione e generazione dei file in AI_TMP.
-Prende i frammenti sparsi dalle iterazioni e ricompone file completi.
+Prende i frammenti sparsi dalle iterazioni e ricompone un output finale.
+
+Due modalità (parametro `mode` di generate_final_artifacts):
+  - "resume" (default) — un documento Markdown riassuntivo del progetto,
+    pensato per un umano che non ha seguito la discussione turno per turno.
+  - "code"   — comportamento originale: estrae blocchi === FILE: ... ===
+    e li salva come file di codice completi.
 """
 
 import os
@@ -12,6 +18,73 @@ from core.db import get_connection
 from core.llm import query_model
 
 logger = logging.getLogger(__name__)
+
+
+SYSTEM_PROMPT_CODE = """
+Sei il Lead Software Engineer e Integratore Finale di un team multi-agente.
+Il tuo unico compito è prendere l'intera discussione avvenuta tra i vari ruoli del team,
+risolvere le criticità emerse e produrre i FILE DI CODICE FINALI E COMPLETI.
+
+REGOLE TASSATIVE DI FORMATTAZIONE OUTPUT:
+1. NON produrre spezzoni di codice, diff o placeholder come `# ... resto del codice invariato ...`.
+2. Ogni file deve essere INTEGRALE, AUTONOMO e pronto per l'esecuzione.
+3. Per OGNI file che crei o modifichi, DEVI usare ESATTAMENTE questo formato:
+
+=== FILE: nome_file.ext ===
+```lingua
+// codice completo da riga 1 alla fine
+```
+
+Esempio:
+=== FILE: app/main.py ===
+```python
+def main():
+    print("Sistema avviato con successo")
+
+if __name__ == "__main__":
+    main()
+```
+"""
+
+SYSTEM_PROMPT_RESUME = """
+Sei il Project Lead e Integratore Finale di un team multi-agente. Il tuo compito
+è leggere l'intera discussione avvenuta tra i vari ruoli del team e produrre un
+DOCUMENTO RIASSUNTIVO FINALE in Markdown, leggibile da un umano che non ha
+seguito la discussione passo-passo.
+
+STRUTTURA OBBLIGATORIA DEL DOCUMENTO:
+1. **Sintesi esecutiva** — 2-3 frasi su cosa è stato deciso/prodotto.
+2. **Decisioni chiave** — le scelte principali emerse durante la discussione,
+   con una breve motivazione per ciascuna.
+3. **Architettura / Struttura proposta** — come si è evoluta l'idea, cosa è
+   stato scartato e perché (se rilevante).
+4. **Punti aperti / rischi** — cosa NON è stato risolto o resta da verificare.
+5. **Prossimi passi consigliati** — azioni concrete, in ordine di priorità.
+
+REGOLE:
+- Scrivi in italiano, tono professionale ma diretto, niente riempitivo.
+- Non riportare la discussione turno per turno: sintetizza, non trascrivi.
+- Se ruoli diversi hanno proposto soluzioni in conflitto, segnalalo esplicitamente
+  invece di far finta che ci sia stato consenso.
+"""
+
+USER_PROMPT_CODE = """
+=== TRASCRIZIONE DISCUSSIONE TEAM (RUN ID: {run_id}) ===
+{transcript}
+
+=== OBIETTIVO ===
+Basandoti su tutti i suggerimenti, refactoring e correzioni proposti dal team nelle varie iterazioni,
+sintetizza il lavoro e genera la versione DEFINITIVA dei file di progetto.
+"""
+
+USER_PROMPT_RESUME = """
+=== TRASCRIZIONE DISCUSSIONE TEAM (RUN ID: {run_id}) ===
+{transcript}
+
+=== OBIETTIVO ===
+Sintetizza questa discussione in un documento riassuntivo finale, seguendo
+esattamente la struttura richiesta nel system prompt.
+"""
 
 
 def get_full_run_transcript(run_id: int) -> str:
@@ -43,10 +116,12 @@ def get_full_run_transcript(run_id: int) -> str:
     return "\n".join(lines)
 
 
-def parse_and_save_artifacts(llm_response: str, output_dir: str = "AI_TMP") -> list:
+def parse_and_save_code_artifacts(llm_response: str, output_dir: str = "AI_TMP") -> list:
     """
-    Analizza l'output del Synthesizer, estrae i blocchi di codice marcati
-    e li salva come file fisici e completi nella cartella target.
+    Analizza l'output del Synthesizer (mode='code'), estrae i blocchi di
+    codice marcati e li salva come file fisici e completi nella cartella
+    target. Se il modello non usa il tag preciso, fallback su un unico
+    file markdown con l'intera risposta.
     """
     os.makedirs(output_dir, exist_ok=True)
     saved_files = []
@@ -60,15 +135,15 @@ def parse_and_save_artifacts(llm_response: str, output_dir: str = "AI_TMP") -> l
         for filename, code in matches:
             filename = filename.strip()
             filepath = os.path.join(output_dir, filename)
-            
+
             # Crea eventuali sottocartelle (es. AI_TMP/src/utils.py)
             parent_dir = os.path.dirname(filepath)
             if parent_dir:
                 os.makedirs(parent_dir, exist_ok=True)
-            
+
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(code.strip() + "\n")
-            
+
             saved_files.append(filepath)
             logger.info(f"💾 File salvato con successo: {filepath}")
     else:
@@ -82,55 +157,48 @@ def parse_and_save_artifacts(llm_response: str, output_dir: str = "AI_TMP") -> l
     return saved_files
 
 
+def save_resume_document(llm_response: str, run_id: int, output_dir: str = "AI_TMP") -> str:
+    """Salva il documento riassuntivo (mode='resume') come un unico file markdown."""
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, f"resume_run_{run_id}.md")
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(llm_response.strip() + "\n")
+
+    logger.info(f"📄 Documento riassuntivo salvato: {filepath}")
+    return filepath
+
+
 def generate_final_artifacts(
     run_id: int,
     model_name: str = "qwen2.5",
-    output_dir: str = "AI_TMP"
+    output_dir: str = "AI_TMP",
+    mode: str = "resume",
 ) -> str:
     """
-    Task orchestratore per la produzione degli artefatti finali.
+    Task orchestratore per la produzione dell'output finale di una run.
+
+    mode="resume" (default): un documento Markdown riassuntivo, un file solo.
+    mode="code": comportamento originale, uno o più file di codice.
     """
-    logger.info(f"🚀 Avvio Generazione Artefatti Finali per Run ID: {run_id}")
-    
+    if mode not in ("resume", "code"):
+        raise ValueError(f"mode sconosciuta: '{mode}' (valide: resume, code)")
+
+    logger.info(f"🚀 Avvio Generazione Artefatti Finali per Run ID: {run_id} (mode={mode})")
+
     transcript = get_full_run_transcript(run_id)
     if not transcript:
         raise ValueError(f"Nessun dato trovato per la Run ID {run_id}")
 
-    system_prompt = """
-Sei il Lead Software Engineer e Integratore Finale di un team multi-agente.
-Il tuo unico compito è prendere l'intera discussione avvenuta tra Planner, Builder, Critic e Observer, 
-risolvere le criticità emerse e produrre i FILE DI CODICE FINALI E COMPLETI.
+    if mode == "code":
+        system_prompt = SYSTEM_PROMPT_CODE
+        prompt = USER_PROMPT_CODE.format(run_id=run_id, transcript=transcript)
+    else:
+        system_prompt = SYSTEM_PROMPT_RESUME
+        prompt = USER_PROMPT_RESUME.format(run_id=run_id, transcript=transcript)
 
-REGOLE TASSATIVE DI FORMATTAZIONE OUTPUT:
-1. NON produrre spezzoni di codice, diff o placeholder come `# ... resto del codice invariato ...`.
-2. Ogni file deve essere INTEGRALE, AUTONOMO e pronto per l'esecuzione.
-3. Per OGNI file che crei o modifichi, DEVI usare ESATTAMENTE questo formato:
+    logger.info(f"🧠 Generazione {mode} in corso tramite il modello {model_name}...")
 
-=== FILE: nome_file.ext ===
-```lingua
-// codice completo da riga 1 alla fine
-        Esempio:
-        === FILE: app/main.py ===
-        ```python
-        def main():
-            print("Sistema avviato con successo")
-
-        if __name__ == "__main__":
-            main()
-        ```
-        """
-
-    prompt = f"""
-=== TRASCRIZIONE DISCUSSIONE TEAM (RUN ID: {run_id}) ===
-{transcript}
-
-=== OBIETTIVO ===
-Basandoti su tutti i suggerimenti, refactoring e correzioni proposti dal team nelle varie iterazioni, 
-sintetizza il lavoro e genera la versione DEFINITIVA dei file di progetto.
-"""
-
-    logger.info(f"🧠 Generazione codice finale in corso tramite il modello {model_name}...")
-    
     result = query_model(
         model_name=model_name,
         prompt=prompt,
@@ -141,11 +209,14 @@ sintetizza il lavoro e genera la versione DEFINITIVA dei file di progetto.
     llm_response = result["response"]
 
     print("\n" + "="*80)
-    print(f"📦 ARTEFATTI FINALI GENERATI DALL'INTEGRATORE (RUN {run_id})")
+    print(f"📦 OUTPUT FINALE GENERATO DALL'INTEGRATORE (RUN {run_id}, mode={mode})")
     print("="*80)
     print(llm_response)
     print("="*80 + "\n")
 
-    saved_files = parse_and_save_artifacts(llm_response, output_dir=output_dir)
-    
-    return f"Generazione completata. File creati in '{output_dir}': {saved_files}"
+    if mode == "code":
+        saved_files = parse_and_save_code_artifacts(llm_response, output_dir=output_dir)
+        return f"📦 Generazione completata. File creati in '{output_dir}': {saved_files}"
+    else:
+        filepath = save_resume_document(llm_response, run_id=run_id, output_dir=output_dir)
+        return f"📄 Documento riassuntivo generato: {filepath}"

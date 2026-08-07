@@ -56,6 +56,7 @@ AGENT_EXPORT = "export"
 AGENT_QUERY = "query"
 AGENT_LLAMA = "llama_review"
 AGENT_AIRFLOW = "airflow_trigger"
+AGENT_SYNTHESIZE = "synthesize"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
 _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirata")
@@ -266,6 +267,47 @@ def parse_airflow_command(text: str) -> str:
     return ""
 
 
+def is_synthesize_trigger(text: str) -> bool:
+    """'sintetizza <run_id>' / 'synth <run_id>'. Trigger diverso da 'esporta'
+    (export_agent.py) apposta — funzionalità distinta, non li unifico senza
+    aver visto cosa fa già export_agent.py."""
+    return text.lower().strip().startswith(("sintetizza", "synth"))
+
+
+def parse_synthesize_args(text: str):
+    """
+    'sintetizza 19'         -> (19, 'resume')
+    'sintetizza run 19'     -> (19, 'resume')   ('run' è rumore, ignorato)
+    'sintetizza codice 19'  -> (19, 'code')
+    'synth 19 code'         -> (19, 'code')
+    Ritorna (run_id:int|None, mode:str). run_id=None se non trovato/non numerico.
+    """
+    t = text.strip()
+    lowered = t.lower()
+    for prefix in ("sintetizza", "synth"):
+        if lowered.startswith(prefix):
+            rest = t[len(prefix):].strip()
+            break
+    else:
+        return None, "resume"
+
+    mode = "resume"
+    run_id = None
+    for tok in rest.split():
+        low = tok.lower()
+        if low in ("codice", "code"):
+            mode = "code"
+        elif low == "run":
+            continue
+        elif run_id is None:
+            try:
+                run_id = int(tok)
+            except ValueError:
+                pass
+
+    return run_id, mode
+
+
 # --- Router vero e proprio ---------------------------------------------------
 
 def route(user_input: str) -> str:
@@ -322,6 +364,8 @@ def route(user_input: str) -> str:
         return AGENT_VERIFY
     if is_export_trigger(text):
         return AGENT_EXPORT
+    if is_synthesize_trigger(text):
+        return AGENT_SYNTHESIZE
     if is_query_trigger(text):
         return AGENT_QUERY
     if is_llama_trigger(text):
