@@ -3,6 +3,17 @@ airflow_agent.py — Trigger e status di DAG Airflow via REST API (JWT, v2 —
 Airflow 3.x), con estrazione parametri in linguaggio naturale via LLM (Ollama)
 per il trigger.
 
+Flusso trigger:
+    "exec airflow <richiesta in linguaggio naturale>"
+        │
+        ▼
+    extract_dag_params()  — LLM (Ollama) legge KNOWN_DAGS + richiesta,
+                             ritorna JSON {"dag_id": ..., "conf": {...}}
+        │
+        ▼
+    trigger_dag_run()     — POST REST API Airflow v2, autenticato con JWT
+                             (cache del token con retry automatico su 401)
+
 Config attesa in .env:
     AIRFLOW_BASE_URL   default: http://localhost:8085
     AIRFLOW_USERNAME   opzionale — se assente, fallback automatico alla
@@ -110,10 +121,28 @@ def _api_request(method: str, path: str, json_body: dict = None, retry: bool = T
     return response
 
 # --- Registro DAG conosciuti -------------------------------------------------
-# COMPILA QUESTO con i dag_id reali. Ogni voce aiuta l'LLM a:
+# Ogni voce aiuta l'LLM a:
 #   1. scegliere il dag_id giusto invece di inventarlo
 #   2. sapere quali chiavi mettere in "conf" e con che tipo
+# Tipi/default presi da dags/emergence_dag.py e dags/emergence_pipeline_dag.py.
+#
+# NOTA: emergence_pipeline_dag.py chiama internamente anche un DAG
+# "emergence_lab_analysis" via TriggerDagRunOperator, ma quel file DAG
+# non è ancora stato condiviso qui — se esiste ed è pensato per essere
+# lanciabile anche da solo (non solo come step interno della pipeline),
+# aggiungilo a questo registro con i suoi param.
 KNOWN_DAGS = {
+    "emergence_dag": {
+        "description": "Lancia una simulazione multi-agente concettuale e produce un audit di coerenza (LLM-as-a-Judge). Se target_run_id è 0 crea una nuova run, altrimenti rianalizza una run esistente.",
+        "params": {
+            "target_run_id": "int, default 0 (0 = nuova run, >0 = riusa una run esistente)",
+            "scenario": "str, default 'Progettazione dell'architettura di coordinamento agenti'",
+            "num_iterations": "int, default 3",
+            "temperature": "float, default 0.7",
+            "seed": "int, default 42",
+            "judge_model": "str, default 'qwen2.5'",
+        },
+    },
     "emergence_lab_analysis": {
         "description": "Analizza una run dell'esperimento Emergence Lab con un LLM giudice",
         "params": {
@@ -122,16 +151,15 @@ KNOWN_DAGS = {
             "judge_model": "str (opzionale, default 'mistral')",
         },
     },
-    "note_organizer": {
-        "description": "DAG notturno che categorizza i file di dettatura vocale per keyword nel nome file",
-        "params": {},
+    "emergence_full_pipeline": {
+        "description": "Pipeline completa: lancia una nuova simulazione (emergence_dag) e poi triggera l'analisi (emergence_lab_analysis) passandole il run_id restituito.",
+        "params": {
+            "scenario": "str, default 'Progettazione dell'architettura di coordinamento agenti'",
+            "num_iterations": "int, default 3",
+            "judge_model": "str, default 'qwen2.5'",
+            "target_role": "str, default 'ALL' (es. 'Planner', 'Critic', 'Builder', 'Scientist', 'Observer')",
+        },
     },
-    "test_dag": {
-        "description": "DAG di test/smoke, nessun parametro richiesto",
-        "params": {},
-    },
-    # Manca ancora il DAG che lancia l'esperimento vero e proprio
-    # (emergence_engine.py) — se ha un suo dag_id separato, aggiungilo qui.
 }
 
 SYSTEM_EXTRACT = """You are a router that converts a natural language request into a JSON
@@ -206,9 +234,11 @@ def extract_dag_params(user_text: str):
 
 def trigger_dag_run(dag_id: str, conf: dict):
     """
-    POST /api/v2/dags/{dag_id}/dagRuns — Airflow REST API v2 (JWT), quella
-    valida per Airflow 3.x. dag_run_id generato lato client per poterlo
-    riportare subito all'utente senza un secondo giro a leggere lo stato.
+    POST /api/v2/dags/{dag_id}/dagRuns — Public API di Airflow 3 (sostituisce
+    /api/v1, rimossa in Airflow 3.x). Autenticato via _api_request(), che
+    gestisce cache del token e retry automatico su 401. dag_run_id generato
+    lato client per poterlo riportare subito all'utente senza un secondo
+    giro a leggere lo stato.
     """
     dag_run_id = f"leles_{uuid.uuid4().hex[:8]}"
 
@@ -216,7 +246,7 @@ def trigger_dag_run(dag_id: str, conf: dict):
         response = _api_request(
             "POST",
             f"/api/v2/dags/{dag_id}/dagRuns",
-            json_body={"dag_run_id": dag_run_id, "conf": conf},
+            json_body={"dag_run_id": dag_run_id, "conf": conf, "logical_date": None},
         )
     except requests.exceptions.ConnectionError:
         return False, f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
@@ -229,8 +259,8 @@ def trigger_dag_run(dag_id: str, conf: dict):
         return True, dag_run_id
     if response.status_code == 404:
         return False, f"❌ DAG '{dag_id}' non trovato su Airflow (controlla che sia unpaused/deployato)"
-    if response.status_code == 401:
-        return False, "❌ Autenticazione Airflow fallita (credenziali sbagliate o token non accettato)"
+    if response.status_code in (401, 403):
+        return False, f"❌ Token Airflow rifiutato ({response.status_code}) — l'utente ha i permessi per lanciare DAG?"
     return False, f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
 
 

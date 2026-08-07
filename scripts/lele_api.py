@@ -78,6 +78,7 @@ ADMIN_IDS = [8733881519, 8249666123]
 # Agenti che richiedono privilegi admin (tutti tranne llama/gemma, che
 # restano aperti a tutti gli utenti Leles).
 _ADMIN_ONLY_AGENTS = {
+    AGENT_AIRFLOW,
     AGENT_IMPROVE,
     AGENT_VERIFY,
     AGENT_EXPORT,
@@ -168,6 +169,14 @@ def ask_lele(q: Question):
         result = restart_process(project)
         save_memory("LELE_P_RESTART_EXT_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_RESTART_EXTERNAL}
+
+    if agent == AGENT_AIRFLOW:
+        dag_request = parse_airflow_command(user_input)
+        print(f"######## AIRFLOW AGENT (richiesta='{dag_request}') ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = airflow_agent(dag_request)
+        save_memory("LELE_AIRFLOW_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_AIRFLOW}
 
     if agent == AGENT_UVICORN_STATUS:
         print("######## PROCESS AGENT (uvicorn health-check) ########")
