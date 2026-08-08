@@ -396,6 +396,7 @@ def restart_all() -> dict[str, str]:
 # leles/.
 
 LELES_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AIRFLOW_DAGS_ROOT = os.getenv("AIRFLOW_HOME", os.path.expanduser("~/Desktop/Danny/airflow"))
 LELES_PYTHON = "/Users/danny/Desktop/Danny/leles/.venv/bin/python3"
 LELES_UVICORN = "/Users/danny/Desktop/Danny/leles/.venv/bin/uvicorn"
 LELES_API_PORT = "8082"
@@ -572,6 +573,8 @@ def get_directory_listing(name: str, subpath: str = "", max_depth: int = 1) -> s
     """
     if name == "leles":
         base = LELES_PATH
+    elif name == "airflow":
+        base = AIRFLOW_DAGS_ROOT
     elif name in PROGETTI_CONFIG:
         base = PROGETTI_CONFIG[name]["path"]
     else:
@@ -745,3 +748,39 @@ def install_tts_voice(project: str, model_name: str) -> str:
 
     prefix = "✅" if result.returncode == 0 else "❌"
     return f"{prefix} Download voce '{model_name}' per {project.upper()}:\n\n{output}"
+
+
+def export_dag_file(filename: str) -> str:
+    """
+    Cerca `filename` ricorsivamente dentro AIRFLOW_DAGS_ROOT (dags/ e
+    sottocartelle) e ne ritorna il contenuto — i DAG non sono in nessun
+    repo git, quindi leggerli dal disco è l'unico modo di vederli da
+    remoto senza essere fisicamente al Mac.
+    """
+    if not os.path.isdir(AIRFLOW_DAGS_ROOT):
+        return f"❌ Cartella Airflow non trovata: {AIRFLOW_DAGS_ROOT}"
+
+    matches = []
+    for root, dirs, files in os.walk(AIRFLOW_DAGS_ROOT):
+        dirs[:] = [d for d in dirs if d not in _DIR_EXCLUDE]
+        for f in files:
+            if f == filename:
+                matches.append(os.path.join(root, f))
+
+    if not matches:
+        return f"❌ Nessun file '{filename}' trovato in {AIRFLOW_DAGS_ROOT} (o sottocartelle)."
+
+    if len(matches) > 1:
+        listing = "\n".join(f"  • {m}" for m in matches)
+        return f"⚠️ Trovati {len(matches)} file chiamati '{filename}':\n{listing}\n\nSpecifica meglio (es. rinomina, o chiedimi di leggere il path esatto)."
+
+    path = matches[0]
+    try:
+        with open(path, "r", errors="replace") as fh:
+            content = fh.read()
+    except Exception as e:
+        return f"❌ Errore leggendo {path}: {e}"
+
+    rel_path = os.path.relpath(path, AIRFLOW_DAGS_ROOT)
+    header = f"📄 {rel_path} ({len(content)} caratteri)\n\n"
+    return header + content

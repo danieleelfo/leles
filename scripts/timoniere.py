@@ -44,6 +44,7 @@ AGENT_TTS_STATUS = "tts_status"
 AGENT_DIRECTORY = "directory"
 AGENT_TTS_COPY = "tts_copy"
 AGENT_TTS_INSTALL = "tts_install"
+AGENT_EXPORT_DAG = "export_dag"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -71,6 +72,7 @@ _PROJECT_PATTERNS = {
     "lele_story_whisper": re.compile(r"(lele[_\s]?)?(story[_\s]?whisper|sw)\b", re.IGNORECASE),
     "lele_night_story": re.compile(r"(lele[_\s]?)?(night[_\s]?story|ns)\b", re.IGNORECASE),
     "lele": re.compile(r"\blele\b", re.IGNORECASE),
+    "airflow": re.compile(r"\b(airflow|dags?)\b", re.IGNORECASE),
 }
 
 
@@ -81,7 +83,10 @@ def extract_project(text: str) -> str:
     Determina a quale progetto si riferisce `text`. Ordine di check
     intenzionale: pattern più specifici (bar_ai, story_whisper, night_story) prima
     del generico "lele" isolato, così "lele_night_story" o "lele_story_whisper"
-    non finiscono matchati come "lele". Default: "leles" (il progetto corrente).
+    non finiscono matchati come "lele". "airflow"/"dag"/"dags" è uno
+    pseudo-progetto: non è in PROGETTI_CONFIG (non è un processo Python
+    start/stop-abile), ma un percorso valido per directory/logs/export.
+    Default: "leles" (il progetto corrente).
     """
     if _PROJECT_PATTERNS["bar_ai"].search(text):
         return "bar_ai"
@@ -89,6 +94,8 @@ def extract_project(text: str) -> str:
         return "lele_story_whisper"
     if _PROJECT_PATTERNS["lele_night_story"].search(text):
         return "lele_night_story"
+    if _PROJECT_PATTERNS["airflow"].search(text):
+        return "airflow"
     if _PROJECT_PATTERNS["lele"].search(text):
         return "lele"
     return "leles"
@@ -242,6 +249,19 @@ def is_verify_trigger(text: str) -> bool:
     return text.lower().strip().startswith(("verifica", "verify"))
 
 
+def is_export_dag_trigger(text: str) -> bool:
+    """'export dag <filename>' — DEVE essere controllato prima di
+    is_export_trigger, che è un catch-all su 'export'/'esporta'."""
+    return text.lower().strip().startswith("export dag ")
+
+
+def parse_export_dag_filename(text: str) -> str:
+    t = text.strip()
+    if t.lower().startswith("export dag "):
+        return t[len("export dag "):].strip()
+    return ""
+
+
 def is_export_trigger(text: str) -> bool:
     return text.lower().strip().startswith(("esporta", "esport", "export"))
 
@@ -362,6 +382,8 @@ def route(user_input: str) -> str:
         return AGENT_IMPROVE
     if is_verify_trigger(text):
         return AGENT_VERIFY
+    if is_export_dag_trigger(text):
+        return AGENT_EXPORT_DAG
     if is_export_trigger(text):
         return AGENT_EXPORT
     if is_synthesize_trigger(text):

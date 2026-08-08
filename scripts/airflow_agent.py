@@ -37,7 +37,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 AIRFLOW_BASE_URL = os.getenv("AIRFLOW_BASE_URL", "http://localhost:8085")
-AIRFLOW_HOME = os.getenv("AIRFLOW_HOME", os.path.expanduser("~/airflow"))
+AIRFLOW_HOME = os.getenv("AIRFLOW_HOME", os.path.expanduser("~/Desktop/Danny/airflow"))
 _PASSWORDS_FILE = os.path.join(AIRFLOW_HOME, "simple_auth_manager_passwords.json.generated")
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
