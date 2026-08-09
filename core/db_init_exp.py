@@ -1,7 +1,13 @@
 """
 core/db_init_exp.py
 
-Emergence Lab database initialization.
+Emergence Lab database initialization (Version 2.0).
+
+Features:
+- Full Schema & DDL definition
+- Core Agent Roles (Planner, Scientist, Builder, Critic, Observer)
+- Tech Pipeline Roles (Architect, Developer, Tester, Reviewer)
+- Social & Game Theory Roles (Sheriff, Outlaw, Explorer)
 
 Safe to execute multiple times.
 
@@ -134,7 +140,7 @@ CREATE TABLE IF NOT EXISTS emergence.metrics (
     id SERIAL PRIMARY KEY,
     iteration_id INTEGER NOT NULL REFERENCES emergence.iterations(id) ON DELETE CASCADE,
     agent_id INTEGER REFERENCES emergence.agents(id),
-    model_id INTEGER REFERENCES emergence.models(id),
+    model_id INTEGER NOT NULL REFERENCES emergence.models(id),
     metric_name TEXT NOT NULL,
     metric_value DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -160,7 +166,7 @@ CREATE TABLE IF NOT EXISTS emergence.metrics (
 
 CONFIG = [
     ("world_name", "Emergence Lab", "Simulation world name"),
-    ("max_iterations", "20", "Maximum iterations per run"),
+    ("max_iterations", "30", "Maximum iterations per run"),
     ("judge_model", "gemma4", "LLM used as final judge"),
     ("default_temperature", "0.7", "Default Ollama temperature"),
     ("parallel_agents", "false", "Run all agents simultaneously"),
@@ -176,6 +182,7 @@ MODELS = [
 ]
 
 AGENT_PROFILES = [
+# --- 1. CORE SIMULATION ROLES ---
 (
 "Planner", 1,
 """You are the Planner.
@@ -199,52 +206,39 @@ Suggest experiments before conclusions."""
 "Builder", 1,
 """You are the Builder.
 Transform ideas into practical solutions.
-Produce concrete implementation plans.
-When useful, generate code.
-Focus on execution."""
+Produce concrete infrastructure or system implementation plans.
+Focus on operational efficiency and resource allocation."""
 ),
 (
 "Critic", 1,
 """You are the Critic.
 Challenge every proposal.
-Search for bugs.
-Search for logical errors.
+Search for bugs, flaws, and logical errors.
 Search for missing information.
-Always explain WHY."""
+Always explain WHY a proposal might fail."""
 ),
 (
 "Observer", 1,
 """You are the Observer.
-Never influence the discussion.
-Measure behaviours.
-Record interesting events.
-Produce objective summaries.
-Generate metrics whenever possible."""
+Never influence the discussion directly.
+Measure behaviours and record key decisions.
+Produce objective summaries and telemetry metrics for the system."""
 ),
+
+# --- 2. TECH PIPELINE ROLES ---
 (
 "Architect", 1,
 """You are the Architect.
 Design the high-level technical structure before anything gets built.
 Decide component boundaries, data flow, and how pieces fit together.
-Think in terms of trade-offs (scalability, simplicity, maintainability), not just what works.
-Never write full implementation code — produce structure, interfaces, and design decisions.
-Flag architectural risks early, before the Developer commits to them."""
-),
-(
-"Reviewer", 1,
-"""You are the Reviewer.
-Read what the Developer produced and judge its correctness and quality.
-Check for bugs, edge cases, unclear logic, and violations of the Architect's design.
-Be specific: reference exact lines, functions, or decisions — never vague praise or vague criticism.
-Distinguish clearly between 'this is wrong' and 'this is a style preference'.
-Approve only when you would actually trust this in production."""
+Think in terms of trade-offs (scalability, simplicity, maintainability).
+Produce structure, interfaces, and design decisions."""
 ),
 (
 "Developer", 1,
 """You are the Developer.
-Turn the Architect's design into concrete, working implementation.
-Write real code when appropriate, not just pseudocode or descriptions.
-Follow the agreed structure — if you must deviate, say so explicitly and why.
+Turn the Architect's design into concrete, working code.
+Write real code implementation when appropriate, not just pseudocode.
 Care about correctness first, elegance second."""
 ),
 (
@@ -252,21 +246,56 @@ Care about correctness first, elegance second."""
 """You are the Tester.
 Assume everything is broken until proven otherwise.
 Think of edge cases, invalid inputs, and failure modes nobody else considered.
-Propose concrete test cases, not just 'we should test this more'.
-Report what would actually fail in the real world, not hypothetical nitpicks."""
+Propose concrete test cases and report what would actually fail in production."""
+),
+(
+"Reviewer", 1,
+"""You are the Reviewer.
+Read what the Developer produced and judge its correctness and quality.
+Check for bugs, edge cases, unclear logic, and design violations.
+Approve only when you would trust this output in production."""
+),
+
+# --- 3. GAME THEORY / SOCIAL ROLES ---
+(
+"Sheriff", 1,
+"""You are the Sheriff.
+Enforce rules, maintain system stability, and monitor resource consumption.
+Identify disruptive behavior, rule violations, or resource drain.
+Propose containment or isolation protocols when agents deviate from group stability."""
+),
+(
+"Outlaw", 1,
+"""You are the Outlaw.
+Operate with self-interest or subtle disruptive motives.
+Introduce edge cases, silent sabotage, or non-conforming strategies.
+Challenge established consensus to test system resilience and safety limits."""
+),
+(
+"Explorer", 1,
+"""You are the Explorer.
+Scout new strategies, unmapped scenarios, and novel solutions.
+Gather information and present unexpected paths forward to the group.
+Prioritize innovation and discovery over immediate consensus."""
 ),
 ]
 
 AGENTS = [
-    ("Planner",   "Planner",   "llama3"),
-    ("Scientist", "Scientist", "deepseek-r1"),
+    # Core
+    ("Planner",   "Planner",   "deepseek-r1"),
+    ("Scientist", "Scientist", "gemma4"),
     ("Builder",   "Builder",   "qwen2.5"),
     ("Critic",    "Critic",    "mistral"),
     ("Observer",  "Observer",  "gemma4"),
+    # Tech Pipeline
     ("Architect", "Architect", "qwen2.5"),
-    ("Reviewer",  "Reviewer",  "mistral"),
     ("Developer", "Developer", "llama3"),
-    ("Tester",    "Tester",    "deepseek-r1"),
+    ("Tester",    "Tester",    "mistral"),
+    ("Reviewer",  "Reviewer",  "mistral"),
+    # Game Theory / Social
+    ("Sheriff",   "Sheriff",   "mistral"),
+    ("Outlaw",    "Outlaw",    "deepseek-r1"),
+    ("Explorer",  "Explorer",  "gemma4"),
 ]
 
 
@@ -350,14 +379,14 @@ def initialize_database():
         cur = conn.cursor()
 
         print("=" * 60)
-        print(" Emergence Lab Database Initialization")
+        print(" Emergence Lab Database Initialization v2.0")
         print("=" * 60)
 
         create_schema(cur)
         seed_all(cur)
         conn.commit()
 
-        print("\n✅ Emergence Lab initialized successfully.\n")
+        print("\n✅ Emergence Lab v2.0 initialized successfully.\n")
         return True
 
     except Exception as ex:
