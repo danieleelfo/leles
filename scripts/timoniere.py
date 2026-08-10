@@ -45,6 +45,7 @@ AGENT_DIRECTORY = "directory"
 AGENT_TTS_COPY = "tts_copy"
 AGENT_TTS_INSTALL = "tts_install"
 AGENT_EXPORT_DAG = "export_dag"
+AGENT_AIRFLOW_STATUS = "airflow_status"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -150,6 +151,22 @@ def is_tts_status_trigger(text: str) -> bool:
     """'status tts <progetto>' — modelli voce Piper installati per un progetto."""
     t = text.lower().strip()
     return t.startswith("status tts") or t.startswith("tts status")
+
+
+def is_airflow_status_trigger(text: str) -> bool:
+    """'status dag [dag_id]' — ultime N esecuzioni di un DAG, o elenco di tutti i DAG se dag_id omesso."""
+    t = text.lower().strip()
+    return t.startswith("status dag") or t.startswith("dag status")
+
+
+def parse_airflow_status_dag_id(text: str) -> str:
+    """Estrae l'eventuale dag_id da 'status dag <dag_id>' — None se omesso (elenco generale)."""
+    t = text.strip()
+    for prefix in ("status dag", "dag status"):
+        if t.lower().startswith(prefix):
+            rest = t[len(prefix):].strip()
+            return rest if rest else None
+    return None
 
 
 def is_directory_trigger(text: str) -> bool:
@@ -366,6 +383,8 @@ def route(user_input: str) -> str:
         return AGENT_RAM_STATUS
     if is_tts_status_trigger(text):
         return AGENT_TTS_STATUS
+    if is_airflow_status_trigger(text):
+        return AGENT_AIRFLOW_STATUS
     if is_directory_trigger(text):
         return AGENT_DIRECTORY
     if is_tts_copy_trigger(text):

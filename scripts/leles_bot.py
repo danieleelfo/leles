@@ -199,6 +199,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`tts install <progetto> <nome_modello>` → scarica una voce Piper (solo tra quelle configurate nel progetto)\n"
         "`directory dag [sottocartella]` → elenca i file nella cartella Airflow reale (non è in git)\n"
         "`export dag <nome_file.py>` → cerca e mostra il contenuto di un DAG (ricorsivo, tutta la cartella Airflow)\n"
+        "`status dag [dag_id]` → ultime esecuzioni di un DAG, o elenco di tutti i DAG se omesso\n"
         "`logs <progetto>` → ultime righe dei log (es. 'logs ns'), utile se un processo parte e crasha subito\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
         "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"

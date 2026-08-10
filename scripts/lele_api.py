@@ -33,7 +33,7 @@ from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice, export_dag_file
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
-from scripts.airflow_agent import airflow_agent
+from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status
 from core.artifact_synthesizer import generate_final_artifacts
 
 from scripts.timoniere import (
@@ -62,6 +62,8 @@ from scripts.timoniere import (
     AGENT_TTS_INSTALL,
     AGENT_EXPORT_DAG,
     parse_export_dag_filename,
+    AGENT_AIRFLOW_STATUS,
+    parse_airflow_status_dag_id,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
@@ -103,6 +105,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_TTS_COPY,
     AGENT_TTS_INSTALL,
     AGENT_EXPORT_DAG,
+    AGENT_AIRFLOW_STATUS,
 }
 
 
@@ -294,6 +297,19 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_EXPDAG_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_EXPORT_DAG}
+
+    if agent == AGENT_AIRFLOW_STATUS:
+        dag_id = parse_airflow_status_dag_id(user_input)
+        print(f"######## AIRFLOW AGENT (status, dag_id={dag_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if dag_id:
+            result = get_dag_runs_status(dag_id)
+        else:
+            result = get_all_dags_status()
+
+        save_memory("LELE_P_AFSTATUS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_AIRFLOW_STATUS}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)
