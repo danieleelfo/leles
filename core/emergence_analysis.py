@@ -213,3 +213,125 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
         )
 
     return report
+
+
+def get_run_scenario(run_id):
+    """
+    Recupera lo scenario iniziale (world_state) della run — serve per dare
+    all'analisi decisionale il contesto di cosa doveva essere risolto,
+    non solo la trascrizione nuda.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT world_state
+        FROM emergence.iterations
+        WHERE run_id = %s
+        ORDER BY iteration_number ASC
+        LIMIT 1;
+    """, (run_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row or not row[0]:
+        return None
+
+    world_state = row[0]
+    return world_state.get("scenario") if isinstance(world_state, dict) else None
+
+
+def analyze_decision(
+    run_id,
+    judge_model="deepseek-r1",
+    judge_role="Analista Decisionale ed Esperto di Dinamiche di Gruppo Multi-Agente",
+):
+    """
+    A differenza di analyze_run() (che valuta se un ruolo è stato
+    interpretato bene), questa funzione estrae la CONCLUSIONE PRATICA
+    raggiunta dal gruppo: quale decisione è stata presa rispetto allo
+    scenario, chi l'ha guidata, con quale motivazione, e se c'è stato
+    consenso reale o il gruppo si è arenato senza decidere nulla.
+    """
+    logger.info(f"🎯 Avvio analisi decisionale per Run ID: {run_id} | Giudice: {judge_model}")
+
+    scenario = get_run_scenario(run_id)
+    messages = get_run_messages(run_id=run_id, target_role="ALL", model_to_study="ALL")
+
+    if not messages:
+        raise ValueError(f"Nessun messaggio trovato per la Run ID {run_id}.")
+
+    # Stessa protezione conflitto d'interesse di analyze_run()
+    models_in_transcript = {msg["model_name"].lower() for msg in messages}
+    judge_participated = judge_model.lower() in models_in_transcript
+
+    conflict_warning = ""
+    if judge_participated:
+        conflict_warning = f"""
+ATTENZIONE — CONFLITTO D'INTERESSE: il giudice ({judge_model}) ha generato
+alcune delle risposte in questa trascrizione. Non essere più indulgente con
+le tue stesse proposte quando valuti se una decisione è stata effettivamente
+presa o solo suggerita.
+"""
+
+    transcript_lines = []
+    for msg in messages:
+        transcript_lines.append(
+            f"[Iterazione {msg['iteration']}] {msg['agent_name']} ({msg['model_name']}):\n"
+            f"{msg['response']}\n"
+            f"{'-' * 40}"
+        )
+    transcript_text = "\n".join(transcript_lines)
+
+    scenario_block = f"=== SCENARIO INIZIALE ===\n{scenario}\n" if scenario else ""
+
+    system_prompt = f"""
+Sei un {judge_role}.
+{conflict_warning}
+Il tuo compito NON è valutare se i ruoli sono stati interpretati bene — è
+estrarre la CONCLUSIONE PRATICA raggiunta dal gruppo rispetto allo scenario
+dato. Sii concreto: rispondi come se dovessi riferire a qualcuno che non ha
+letto la trascrizione "cosa hanno deciso, chi, e perché".
+
+REGOLA OBBLIGATORIA SULLE CITAZIONI: ogni affermazione su cosa è stato deciso
+deve essere supportata da almeno una citazione testuale tra virgolette (max
+20-25 parole) con (Iterazione N, agente). Se il gruppo NON ha raggiunto una
+decisione chiara, dillo esplicitamente — non inventare un consenso che non c'è.
+"""
+
+    prompt = f"""
+=== DATI ESPERIMENTO (RUN ID: {run_id}) ===
+{scenario_block}
+=== TRASCRIZIONE INTERAZIONI ===
+{transcript_text}
+
+=== OBIETTIVO ANALISI ===
+Rispondi punto per punto:
+
+1. **Decisione finale**: cosa ha deciso il gruppo, in una frase chiara? Se non c'è consenso, dillo.
+2. **Chi ha deciso**: quale ruolo/agente ha guidato o imposto la decisione finale? Scelta condivisa o imposta da un singolo ruolo?
+3. **Motivazione**: quali argomentazioni hanno portato a questa decisione? Cita i passaggi chiave.
+4. **Dissenso**: qualcuno si è opposto? Con quali argomenti? Il dissenso è stato affrontato o ignorato?
+5. **Coerenza con lo scenario**: la decisione risolve effettivamente il problema posto, o lo elude?
+"""
+
+    result = query_model(
+        model_name=judge_model,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.3
+    )
+
+    report = result.get("response") if isinstance(result, dict) else None
+
+    if not report:
+        logger.error(f"❌ query_model per {judge_model} ha restituito None o vuoto!")
+        return f"❌ ERRORE: Il modello Giudice '{judge_model}' non ha generato alcuna risposta (timeout o risposta vuota)."
+
+    if judge_participated:
+        report = (
+            f"⚠️ **Nota metodologica**: il giudice ({judge_model}) ha generato "
+            f"alcune delle risposte analizzate — possibile conflitto d'interesse.\n\n{report}"
+        )
+
+    return report

@@ -35,6 +35,7 @@ from scripts.process_agent import start_process, stop_process, restart_process, 
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status
 from core.artifact_synthesizer import generate_final_artifacts
+from core.emergence_analysis import analyze_decision
 
 from scripts.timoniere import (
     route,
@@ -64,6 +65,8 @@ from scripts.timoniere import (
     parse_export_dag_filename,
     AGENT_AIRFLOW_STATUS,
     parse_airflow_status_dag_id,
+    AGENT_DECISION,
+    parse_decision_args,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_STATUS,
@@ -106,6 +109,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_TTS_INSTALL,
     AGENT_EXPORT_DAG,
     AGENT_AIRFLOW_STATUS,
+    AGENT_DECISION,
 }
 
 
@@ -310,6 +314,25 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_AFSTATUS_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_AIRFLOW_STATUS}
+
+    if agent == AGENT_DECISION:
+        run_id, judge_model = parse_decision_args(user_input)
+        print(f"######## EMERGENCE ANALYSIS (decision, run_id={run_id}, judge={judge_model}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not run_id:
+            result = "❌ Uso: 'decisione <run_id> [judge_model]' (es. 'decisione 47' o 'decisione 47 mistral')"
+        else:
+            try:
+                if judge_model:
+                    result = analyze_decision(run_id, judge_model=judge_model)
+                else:
+                    result = analyze_decision(run_id)
+            except Exception as e:
+                result = f"❌ Errore analisi decisionale: {e}"
+
+        save_memory("LELE_P_DECISION_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_DECISION}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)

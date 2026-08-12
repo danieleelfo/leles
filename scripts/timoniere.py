@@ -46,6 +46,7 @@ AGENT_TTS_COPY = "tts_copy"
 AGENT_TTS_INSTALL = "tts_install"
 AGENT_EXPORT_DAG = "export_dag"
 AGENT_AIRFLOW_STATUS = "airflow_status"
+AGENT_DECISION = "decision"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -157,6 +158,27 @@ def is_airflow_status_trigger(text: str) -> bool:
     """'status dag [dag_id]' — ultime N esecuzioni di un DAG, o elenco di tutti i DAG se dag_id omesso."""
     t = text.lower().strip()
     return t.startswith("status dag") or t.startswith("dag status")
+
+
+def is_decision_trigger(text: str) -> bool:
+    """'decisione <run_id> [judge_model]' — estrae la conclusione/decisione presa in una run."""
+    return text.lower().strip().startswith("decisione ")
+
+
+def parse_decision_args(text: str):
+    """'decisione 47 deepseek-r1' -> (47, 'deepseek-r1'); 'decisione 47' -> (47, None)."""
+    t = text.strip()
+    if t.lower().startswith("decisione "):
+        parts = t[len("decisione "):].strip().split()
+        if not parts:
+            return None, None
+        try:
+            run_id = int(parts[0])
+        except ValueError:
+            return None, None
+        judge_model = parts[1] if len(parts) > 1 else None
+        return run_id, judge_model
+    return None, None
 
 
 def parse_airflow_status_dag_id(text: str) -> str:
@@ -385,6 +407,8 @@ def route(user_input: str) -> str:
         return AGENT_TTS_STATUS
     if is_airflow_status_trigger(text):
         return AGENT_AIRFLOW_STATUS
+    if is_decision_trigger(text):
+        return AGENT_DECISION
     if is_directory_trigger(text):
         return AGENT_DIRECTORY
     if is_tts_copy_trigger(text):
