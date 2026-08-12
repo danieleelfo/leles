@@ -227,6 +227,14 @@ def extract_dag_params(user_text: str):
     dag_id = parsed.get("dag_id")
     conf = parsed.get("conf") or {}
 
+    # L'LLM a volte "corregge" pipeline_config da stringa-contenente-JSON a
+    # oggetto JSON vero — comportamento ragionevole per un umano, ma Airflow
+    # ha il Param dichiarato type="string" e rifiuta con 400 se arriva un
+    # oggetto. Normalizzo qui, non ci si può fidare che l'LLM mantenga il
+    # tipo esatto quando il contenuto stesso è JSON.
+    if "pipeline_config" in conf and not isinstance(conf["pipeline_config"], str):
+        conf["pipeline_config"] = json.dumps(conf["pipeline_config"])
+
     if dag_id is not None and dag_id not in KNOWN_DAGS:
         return None, {}, f"DAG '{dag_id}' non riconosciuto (non in KNOWN_DAGS)"
 
