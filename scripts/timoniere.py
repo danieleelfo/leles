@@ -53,6 +53,7 @@ AGENT_RAM_STATUS = "ram_status"
 AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_PULL_FORCE = "git_pull_force"
 AGENT_GIT_STATUS = "git_status"
+AGENT_GIT_DIFF = "git_diff"
 AGENT_IMPROVE = "improve"
 AGENT_VERIFY = "verify"
 AGENT_EXPORT = "export"
@@ -278,7 +279,9 @@ def is_git_pull_trigger(text: str) -> bool:
 
 def is_git_status_trigger(text: str) -> bool:
     return text.lower().strip().startswith("status")
-
+    
+def is_git_diff_trigger(text: str) -> bool:
+    return text.lower().strip().startswith("diff")
 
 def is_improve_trigger(text: str) -> bool:
     return text.lower().strip().startswith("improve")
@@ -419,6 +422,8 @@ def route(user_input: str) -> str:
         return AGENT_GIT_PULL_FORCE
     if is_git_pull_trigger(text):
         return AGENT_GIT_PULL
+    if is_git_diff_trigger(text):
+        return AGENT_GIT_DIFF
     if is_git_status_trigger(text):
         return AGENT_GIT_STATUS
     if is_improve_trigger(text):

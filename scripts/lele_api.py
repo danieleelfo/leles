@@ -30,7 +30,7 @@ from scripts.lele_engine9 import (
 
 from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
-from scripts.git_agent import git_pull, git_pull_force, git_status
+from scripts.git_agent import git_pull, git_pull_force, git_status, git_diff
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice, export_dag_file
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
 from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status
@@ -69,6 +69,7 @@ from scripts.timoniere import (
     parse_decision_args,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
+    AGENT_GIT_DIFF,
     AGENT_GIT_STATUS,
     AGENT_IMPROVE,
     AGENT_VERIFY,
@@ -96,6 +97,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_QUERY,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
+    AGENT_GIT_DIFF,
     AGENT_GIT_STATUS,
     AGENT_RESTART_LELES,
     AGENT_START,
@@ -349,6 +351,14 @@ def ask_lele(q: Question):
         result = git_pull_force(project)
         save_memory("LELE_GIT_PULLF_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_GIT_PULL_FORCE}
+        
+    if agent == AGENT_GIT_DIFF:
+        project = extract_project(user_input)
+        print(f"######## GIT AGENT (diff, project={project}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+        result = git_diff(project)
+        save_memory("LELE_GIT_DIFF_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_GIT_DIFF}
 
     if agent == AGENT_GIT_STATUS:
         project = extract_project(user_input)

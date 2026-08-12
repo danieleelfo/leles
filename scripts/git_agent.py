@@ -129,3 +129,25 @@ def git_status(project: str = "leles") -> str:
         f"📌 Ultimo commit: {last_commit}\n\n"
         f"{status_output}"
     )
+    
+
+def git_diff(project: str = "leles") -> str:
+    """Restituisce il diff delle modifiche locali non committate."""
+    path = _project_path(project)
+    if not path:
+        return f"❌ Progetto sconosciuto: '{project}'. Disponibili: {', '.join(PROJECTS)}"
+
+    result = subprocess.run(
+        ["git", "diff"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    output = (result.stdout + result.stderr).strip() or "(nessuna modifica nel diff)"
+    prefix = "✅" if result.returncode == 0 else "❌"
+    label = PROJECTS[project]["label"]
+
+    return f"{prefix} Diff {label}:\n\n{output}"
+
