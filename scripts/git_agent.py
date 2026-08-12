@@ -151,3 +151,33 @@ def git_diff(project: str = "leles") -> str:
 
     return f"{prefix} Diff {label}:\n\n{output}"
 
+
+def git_last_commit_diff(project: str = "leles") -> str:
+    """
+    Diff dell'ULTIMO COMMIT (già salvato nella storia), non delle modifiche
+    non committate — utile dopo un 'pull report' per vedere esattamente cosa
+    è cambiato nell'ultimo push, invece di 'diff' (sempre vuoto dopo un pull
+    pulito, perché non ci sono modifiche locali in sospeso) o 'status'
+    (mostra solo l'hash/messaggio, non il contenuto reale del cambiamento).
+    """
+    path = _project_path(project)
+    if not path:
+        return f"❌ Progetto sconosciuto: '{project}'. Disponibili: {', '.join(PROJECTS)}"
+
+    result = subprocess.run(
+        ["git", "show", "--stat", "-p", "HEAD"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    output = (result.stdout + result.stderr).strip() or "(nessun commit trovato)"
+    if len(output) > 3800:
+        output = output[:3800] + "\n...(troncato — diff completo troppo lungo)"
+
+    prefix = "✅" if result.returncode == 0 else "❌"
+    label = PROJECTS[project]["label"]
+
+    return f"{prefix} Ultimo commit {label}:\n\n{output}"
+

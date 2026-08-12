@@ -186,6 +186,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚓ *Bentornato Capitano!*\n\n"
         "Comandi admin:\n"
         "`pull report <leles|bar_ai|lele|story_whisper>` → git pull\n"
+        "`diff <progetto>` → modifiche locali non ancora committate\n"
+        "`commit <progetto>` → diff dell'ultimo commit già salvato (cosa è cambiato nell'ultimo push)\n"
         "`status <leles|bar_ai|lele|story_whisper>` → git status + ultimo commit\n"
         "`uvicorn status` → controlla se tutte le API sono vive\n"
         "`telegram status` → controlla se tutti i bot sono vivi\n"

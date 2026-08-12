@@ -54,6 +54,7 @@ AGENT_GIT_PULL = "git_pull"
 AGENT_GIT_PULL_FORCE = "git_pull_force"
 AGENT_GIT_STATUS = "git_status"
 AGENT_GIT_DIFF = "git_diff"
+AGENT_GIT_LAST_COMMIT = "git_last_commit"
 AGENT_IMPROVE = "improve"
 AGENT_VERIFY = "verify"
 AGENT_EXPORT = "export"
@@ -283,6 +284,10 @@ def is_git_status_trigger(text: str) -> bool:
 def is_git_diff_trigger(text: str) -> bool:
     return text.lower().strip().startswith("diff")
 
+def is_git_last_commit_trigger(text: str) -> bool:
+    """'commit <progetto>' — diff dell'ultimo commit già salvato, non delle modifiche in sospeso."""
+    return text.lower().strip().startswith("commit")
+
 def is_improve_trigger(text: str) -> bool:
     return text.lower().strip().startswith("improve")
 
@@ -424,6 +429,8 @@ def route(user_input: str) -> str:
         return AGENT_GIT_PULL
     if is_git_diff_trigger(text):
         return AGENT_GIT_DIFF
+    if is_git_last_commit_trigger(text):
+        return AGENT_GIT_LAST_COMMIT
     if is_git_status_trigger(text):
         return AGENT_GIT_STATUS
     if is_improve_trigger(text):
