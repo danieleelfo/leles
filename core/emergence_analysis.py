@@ -25,10 +25,15 @@ MAX_TRANSCRIPT_CHARS = JUDGE_NUM_CTX * 3
 
 
 def _cap_transcript(transcript_text: str) -> tuple:
-    """Ritorna (testo, è_stato_troncato). Taglia dalla coda se troppo lungo per JUDGE_NUM_CTX."""
+    """
+    Ritorna (testo, è_stato_troncato). Se troppo lungo per JUDGE_NUM_CTX,
+    taglia dall'INIZIO (tiene la coda) — le iterazioni finali contano di
+    più per capire come è andata a finire (conclusione/decisione presa)
+    rispetto alle prime, che sono più che altro l'apertura della discussione.
+    """
     if len(transcript_text) <= MAX_TRANSCRIPT_CHARS:
         return transcript_text, False
-    return transcript_text[:MAX_TRANSCRIPT_CHARS], True
+    return transcript_text[-MAX_TRANSCRIPT_CHARS:], True
 
 
 def get_run_messages(run_id, target_role="ALL", model_to_study="ALL", max_iterations=None):
