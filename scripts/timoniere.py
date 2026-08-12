@@ -156,9 +156,9 @@ def is_tts_status_trigger(text: str) -> bool:
 
 
 def is_airflow_status_trigger(text: str) -> bool:
-    """'status dag [dag_id]' — ultime N esecuzioni di un DAG, o elenco di tutti i DAG se dag_id omesso."""
+    """'status dag [dag_id]' / 'status airflow' — ultime N esecuzioni di un DAG, o elenco di tutti i DAG se dag_id omesso."""
     t = text.lower().strip()
-    return t.startswith("status dag") or t.startswith("dag status")
+    return t.startswith("status dag") or t.startswith("dag status") or t.startswith("status airflow")
 
 
 def is_decision_trigger(text: str) -> bool:
@@ -185,7 +185,7 @@ def parse_decision_args(text: str):
 def parse_airflow_status_dag_id(text: str) -> str:
     """Estrae l'eventuale dag_id da 'status dag <dag_id>' — None se omesso (elenco generale)."""
     t = text.strip()
-    for prefix in ("status dag", "dag status"):
+    for prefix in ("status dag", "dag status", "status airflow"):
         if t.lower().startswith(prefix):
             rest = t[len(prefix):].strip()
             return rest if rest else None

@@ -11,6 +11,25 @@ from core.llm import query_model
 
 logger = logging.getLogger(__name__)
 
+# Il default di query_model (16384) basta per una singola risposta, ma qui
+# la trascrizione può contenere DECINE di risposte concatenate (target_role
+# ALL, molte iterazioni) — con num_ctx insufficiente Ollama tronca il
+# prompt SENZA errore, e il giudice genera in base a un contesto mutilato
+# (risposte quasi vuote, non un'eccezione — per questo il bug era silenzioso).
+JUDGE_NUM_CTX = 32768
+
+# ~4 caratteri per token è una stima approssimativa ma sufficiente qui: se
+# la trascrizione supera comunque questa soglia anche con num_ctx alzato,
+# meglio un errore chiaro che un altro giudizio silenziosamente mutilato.
+MAX_TRANSCRIPT_CHARS = JUDGE_NUM_CTX * 3
+
+
+def _cap_transcript(transcript_text: str) -> tuple:
+    """Ritorna (testo, è_stato_troncato). Taglia dalla coda se troppo lungo per JUDGE_NUM_CTX."""
+    if len(transcript_text) <= MAX_TRANSCRIPT_CHARS:
+        return transcript_text, False
+    return transcript_text[:MAX_TRANSCRIPT_CHARS], True
+
 
 def get_run_messages(run_id, target_role="ALL", model_to_study="ALL", max_iterations=None):
     """
@@ -125,6 +144,12 @@ def analyze_run(
             f"--------------------------------------------------"
         )
     transcript_text = "\n".join(transcript_lines)
+    transcript_text, was_capped = _cap_transcript(transcript_text)
+    if was_capped:
+        logger.warning(
+            f"⚠️ Trascrizione Run {run_id} troppo lunga ({len(transcript_lines)} messaggi), "
+            f"troncata a {MAX_TRANSCRIPT_CHARS} caratteri per stare in JUDGE_NUM_CTX."
+        )
 
     # 3. Istruzione di Focus
     if target_role and target_role.upper() != "ALL":
@@ -194,14 +219,18 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
         model_name=judge_model,
         prompt=prompt,
         system_prompt=system_prompt,
-        temperature=0.3
+        temperature=0.3,
+        num_ctx=JUDGE_NUM_CTX,
     )
 
     # 1. Recupero sicuro della risposta con fallback
     report = result.get("response") if isinstance(result, dict) else None
 
     # 2. Controllo se la risposta dell'LLM è vuota o None
-    if not report:
+    # 'if not report' non basta: una risposta degenere tipo ' ' o '**'
+    # (spazi/markdown vuoto) è truthy in Python e passerebbe indisturbata,
+    # producendo un messaggio Telegram che sembra 'vuoto' senza errore.
+    if not report or len(report.strip()) < 50:
         logger.error(f"❌ La chiamata a query_model per il modello {judge_model} ha restituito None o vuoto!")
         return f"❌ ERRORE: Il modello Giudice '{judge_model}' non ha generato alcuna risposta (possibile timeout API o risposta vuota)."
 
@@ -282,6 +311,12 @@ presa o solo suggerita.
             f"{'-' * 40}"
         )
     transcript_text = "\n".join(transcript_lines)
+    transcript_text, was_capped = _cap_transcript(transcript_text)
+    if was_capped:
+        logger.warning(
+            f"⚠️ Trascrizione Run {run_id} troppo lunga ({len(transcript_lines)} messaggi), "
+            f"troncata a {MAX_TRANSCRIPT_CHARS} caratteri per stare in JUDGE_NUM_CTX."
+        )
 
     scenario_block = f"=== SCENARIO INIZIALE ===\n{scenario}\n" if scenario else ""
 
@@ -319,12 +354,16 @@ Rispondi punto per punto:
         model_name=judge_model,
         prompt=prompt,
         system_prompt=system_prompt,
-        temperature=0.3
+        temperature=0.3,
+        num_ctx=JUDGE_NUM_CTX,
     )
 
     report = result.get("response") if isinstance(result, dict) else None
 
-    if not report:
+    # 'if not report' non basta: una risposta degenere tipo ' ' o '**'
+    # (spazi/markdown vuoto) è truthy in Python e passerebbe indisturbata,
+    # producendo un messaggio Telegram che sembra 'vuoto' senza errore.
+    if not report or len(report.strip()) < 50:
         logger.error(f"❌ query_model per {judge_model} ha restituito None o vuoto!")
         return f"❌ ERRORE: Il modello Giudice '{judge_model}' non ha generato alcuna risposta (timeout o risposta vuota)."
 
