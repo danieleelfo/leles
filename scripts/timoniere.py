@@ -55,6 +55,7 @@ AGENT_GIT_PULL_FORCE = "git_pull_force"
 AGENT_GIT_STATUS = "git_status"
 AGENT_GIT_DIFF = "git_diff"
 AGENT_GIT_LAST_COMMIT = "git_last_commit"
+AGENT_TASK_LOG = "task_log"
 AGENT_IMPROVE = "improve"
 AGENT_VERIFY = "verify"
 AGENT_EXPORT = "export"
@@ -160,6 +161,21 @@ def is_airflow_status_trigger(text: str) -> bool:
     """'status dag [dag_id]' / 'status airflow' — ultime N esecuzioni di un DAG, o elenco di tutti i DAG se dag_id omesso."""
     t = text.lower().strip()
     return t.startswith("status dag") or t.startswith("dag status") or t.startswith("status airflow")
+
+
+def is_task_log_trigger(text: str) -> bool:
+    """'log task <dag_id> <task_id>' — log reale (con traceback) dell'ultimo task instance."""
+    return text.lower().strip().startswith("log task ")
+
+
+def parse_task_log_args(text: str):
+    """'log task emergence_dag run_coherence_analysis_task' -> (dag_id, task_id)."""
+    t = text.strip()
+    if t.lower().startswith("log task "):
+        parts = t[len("log task "):].strip().split()
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+    return None, None
 
 
 def is_decision_trigger(text: str) -> bool:
@@ -403,6 +419,8 @@ def route(user_input: str) -> str:
         return AGENT_TELEGRAM_STATUS
     if is_system_status_trigger(text):
         return AGENT_SYSTEM_STATUS
+    if is_task_log_trigger(text):
+        return AGENT_TASK_LOG
     if is_logs_trigger(text):
         return AGENT_LOGS
     if is_ip_status_trigger(text):

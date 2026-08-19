@@ -371,3 +371,53 @@ def get_all_dags_status() -> str:
         lines.append(f"  • {d.get('dag_id')} ({paused})")
 
     return "\n".join(lines)
+
+
+def get_latest_task_log(dag_id: str, task_id: str, try_number: int = 1) -> str:
+    """
+    Log reale (traceback incluso) dell'ultimo task instance di un DAG —
+    per vedere l'errore vero quando un DAG fallisce con un messaggio
+    generico tipo 'Errore sconosciuto' (tipico quando il fallimento viene
+    da un DAG figlio triggerato via TriggerDagRunOperator, il cui
+    traceback non risale al DAG padre).
+    """
+    try:
+        runs_resp = _api_request(
+            "GET",
+            f"/api/v2/dags/{dag_id}/dagRuns?limit=1&order_by=-start_date",
+        )
+    except requests.exceptions.ConnectionError:
+        return f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL}"
+    except RuntimeError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        return f"❌ Errore di rete verso Airflow: {e}"
+
+    if runs_resp.status_code != 200:
+        return f"❌ Airflow ha risposto {runs_resp.status_code}: {runs_resp.text[:300]}"
+
+    runs = runs_resp.json().get("dag_runs", [])
+    if not runs:
+        return f"❌ Nessuna run trovata per '{dag_id}'."
+
+    dag_run_id = runs[0]["dag_run_id"]
+    state = runs[0].get("state", "?")
+
+    log_resp = _api_request(
+        "GET",
+        f"/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}/logs/{try_number}",
+    )
+
+    if log_resp.status_code == 404:
+        return (
+            f"❌ Task '{task_id}' non trovato nella run '{dag_run_id}' (dag={dag_id}). "
+            f"Controlla il nome esatto del task."
+        )
+    if log_resp.status_code != 200:
+        return f"❌ Airflow ha risposto {log_resp.status_code}: {log_resp.text[:300]}"
+
+    content = log_resp.text
+    if len(content) > 3700:
+        content = "...(troncato, tengo la coda)...\n" + content[-3700:]
+
+    return f"📄 Log [{dag_id} / {task_id}] — run {dag_run_id} ({state}):\n\n{content}"

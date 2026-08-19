@@ -33,7 +33,7 @@ from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status, git_diff, git_last_commit_diff
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice, export_dag_file
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
-from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status
+from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
 
@@ -65,6 +65,8 @@ from scripts.timoniere import (
     parse_export_dag_filename,
     AGENT_AIRFLOW_STATUS,
     parse_airflow_status_dag_id,
+    AGENT_TASK_LOG,
+    parse_task_log_args,
     AGENT_DECISION,
     parse_decision_args,
     AGENT_GIT_PULL,
@@ -113,6 +115,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_TTS_INSTALL,
     AGENT_EXPORT_DAG,
     AGENT_AIRFLOW_STATUS,
+    AGENT_TASK_LOG,
     AGENT_DECISION,
 }
 
@@ -318,6 +321,19 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_AFSTATUS_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_AIRFLOW_STATUS}
+
+    if agent == AGENT_TASK_LOG:
+        dag_id, task_id = parse_task_log_args(user_input)
+        print(f"######## AIRFLOW AGENT (task log, dag_id={dag_id}, task_id={task_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not dag_id or not task_id:
+            result = "❌ Uso: 'log task <dag_id> <task_id>' (es. 'log task emergence_dag run_coherence_analysis_task')"
+        else:
+            result = get_latest_task_log(dag_id, task_id)
+
+        save_memory("LELE_P_TASKLOG_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_TASK_LOG}
 
     if agent == AGENT_DECISION:
         run_id, judge_model = parse_decision_args(user_input)
