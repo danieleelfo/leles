@@ -180,6 +180,6 @@ def get_ram_breakdown(timeout: float = 3.0) -> str:
         lines.append(f"🦙 Ollama: impossibile leggere i modelli caricati ({e})")
 
     lines.append("")
-    lines.append("(Piper/TTS non incluso: vive nel processo del bot, non in questo)")
+    lines.append("(Piper/TTS non incluso: use status tts)")
 
     return "\n".join(lines)
