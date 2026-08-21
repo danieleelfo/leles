@@ -303,9 +303,9 @@ def airflow_agent(user_text: str) -> str:
 # --- Status (sola lettura, nessun LLM coinvolto — deterministico) -----------
 
 _STATE_EMOJI = {
-    "success": "✅",
+    "success": "✅👌🥳",
     "failed": "❌",
-    "running": "🔄",
+    "running": "🔄🏴‍☠️ ",
     "queued": "⏳",
     "up_for_retry": "🔁",
     "upstream_failed": "⛔",
