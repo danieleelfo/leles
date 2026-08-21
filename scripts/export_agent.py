@@ -12,8 +12,8 @@ Comandi supportati:
     esporta cerca horror
     esporta cerca horror ultime 20
     esporta ultime 50
-    esporta file <percorso>          # <-- NUOVO
-    export file <percorso>          # <-- NUOVO
+    esporta file <percorso>          
+    export file <percorso>          
 
 Output:
     YAML (per comandi memoria)
