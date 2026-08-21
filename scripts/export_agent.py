@@ -86,7 +86,7 @@ def export_agent(command: str) -> str:
 
     # esporta 1963
     # esporta id 1963
-    m = re.match(r"esporta(?:\\s+id)?\\s+(\\d+)$", cmd)
+    m = re.match(r"esporta(?:\s+id)?\s+(\d+)$", cmd)
     if m:
         mem_id = int(m.group(1))
         rows = load_memory_structured(limit=SEARCH_WINDOW)
@@ -98,7 +98,7 @@ def export_agent(command: str) -> str:
     # esporta cerca horror
     # esporta cerca horror ultime 10
     m = re.match(
-        r"esporta\\s+cerca\\s+(.+?)(?:\\s+ultime\\s+(\\d+))?$",
+        r"esporta\s+cerca\s+(.+?)(?:\s+ultime\s+(\d+))?$",
         cmd,
     )
     if m:
@@ -109,7 +109,7 @@ def export_agent(command: str) -> str:
         return _yaml(results[-limit:])
 
     # esporta ultime 20
-    m = re.match(r"esporta\\s+ultime\\s+(\\d+)$", cmd)
+    m = re.match(r"esporta\s+ultime\s+(\d+)$", cmd)
     if m:
         limit = int(m.group(1))
         rows = load_memory_structured(limit=limit)
@@ -118,7 +118,7 @@ def export_agent(command: str) -> str:
     # esporta ruolo gemma
     # esporta ruolo gemma ultime 10
     m = re.match(
-        r"esporta\\s+ruolo\\s+(\\w+)(?:\\s+ultime\\s+(\\d+))?$",
+        r"esporta\s+ruolo\s+(\w+)(?:\s+ultime\s+(\d+))?$",
         cmd,
     )
     if m:
