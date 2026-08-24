@@ -241,6 +241,9 @@ def system_status() -> str:
     lines.append("──────────────")
     lines.append(f"{'🟢' if check_model_loaded('gemma4') else '⚪️'} Gemma4")
     lines.append(f"{'🟢' if check_model_loaded('llama3') else '⚪️'} Llama3")
+    lines.append(f"{'🟢' if check_model_loaded('qwen2.5') else '⚪️'} Qwen2.5")
+    lines.append(f"{'🟢' if check_model_loaded('deepseek-r1') else '⚪️'} DeepSeek-R1")
+    lines.append(f"{'🟢' if check_model_loaded('mistral') else '⚪️'} Mistral")
 
     # --- Git (Leles stessa) ---
     lines.append("\nGit")

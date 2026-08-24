@@ -22,6 +22,13 @@ OLLAMA_URL = "http://localhost:11434/api/tags"
 OLLAMA_PS_URL = "http://localhost:11434/api/ps"
 _IP_SERVICES = ("https://api.ipify.org", "https://icanhazip.com")
 
+# Modelli Ollama attesi nello stack (vedi memoria progetto: Gemma4, Llama3,
+# Qwen2.5, DeepSeek-R1, Mistral). Usato da get_ollama_models_status() per
+# il check "status sistema" — prima veniva controllato solo il generico
+# check_ollama(), senza sapere QUALI modelli fossero effettivamente
+# disponibili/pull-ati.
+OLLAMA_MODELS = ["gemma4", "llama3", "qwen2.5", "deepseek-r1", "mistral"]
+
 
 def check_ollama(timeout: float = 2.0) -> bool:
     """True se Ollama risponde sulla sua porta di default (11434)."""
@@ -46,6 +53,32 @@ def check_model_loaded(model_name: str, timeout: float = 2.0) -> bool:
         return any(model_name in m.get("name", "") for m in models)
     except Exception:
         return False
+
+
+def get_ollama_models_status(timeout: float = 2.0) -> str:
+    """
+    Stato di disponibilità (pull-ati, non necessariamente in RAM — per
+    quello vedi get_ram_breakdown/OLLAMA_PS_URL) di tutti i modelli attesi
+    nello stack: gemma4, llama3, qwen2.5, deepseek-r1, mistral.
+
+    Una sola chiamata a /api/tags condivisa per tutti i modelli, invece di
+    N chiamate via check_model_loaded (che ne farebbe una a testa) — più
+    veloce e più robusto se Ollama è lento a rispondere.
+    """
+    try:
+        r = httpx.get(OLLAMA_URL, timeout=timeout)
+        r.raise_for_status()
+        available = [m.get("name", "") for m in r.json().get("models", [])]
+    except Exception as e:
+        return f"🦙 Ollama: impossibile leggere i modelli disponibili ({e})"
+
+    lines = []
+    for model_name in OLLAMA_MODELS:
+        present = any(model_name in name for name in available)
+        icon = "✅" if present else "❌"
+        lines.append(f"  {icon} {model_name}")
+
+    return "🦙 Modelli Ollama:\n" + "\n".join(lines)
 
 
 def check_port(port: int, host: str = "localhost", timeout: float = 1.5) -> bool:
@@ -81,6 +114,25 @@ def get_uptime() -> str:
     return f"{hours}h {minutes}m"
 
 
+def get_local_ip() -> str:
+    """
+    IP interno (LAN) del Mac. Non apre nessuna connessione reale: il
+    trucco standard è connettersi (UDP, quindi senza handshake) a un IP
+    esterno qualsiasi solo per far scegliere al sistema operativo quale
+    interfaccia/IP locale userebbe — poi si legge quell'IP senza mai
+    inviare un pacchetto. Funziona anche senza rete esterna raggiungibile
+    perché UDP connect non fa I/O reale.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return "impossibile determinare l'IP interno"
+    finally:
+        s.close()
+
+
 def get_public_ip(timeout: float = 5.0) -> str:
     """
     IP pubblico attuale del Mac, utile perché su rete domestica è dinamico
@@ -98,6 +150,22 @@ def get_public_ip(timeout: float = 5.0) -> str:
     return "impossibile recuperare l'IP pubblico (nessun servizio ha risposto)"
 
 
+def get_ip_status(timeout: float = 5.0) -> str:
+    """
+    Vista combinata IP interno + pubblico, per il comando 'status ip'.
+    Prima veniva mostrato solo il pubblico (get_public_ip) — l'interno
+    serve per capire a colpo d'occhio se sei sulla stessa LAN del Mac
+    (utile per debug SSH/accesso diretto senza passare da fuori casa).
+    """
+    local_ip = get_local_ip()
+    public_ip = get_public_ip(timeout=timeout)
+
+    return (
+        f"🏠 IP interno (LAN): {local_ip}\n"
+        f"🌐 IP pubblico: {public_ip}"
+    )
+
+
 def _ram_used_total_gb(mem) -> tuple:
     """
     (used_gb, total_gb), calcolati in modo coerente con mem.percent.
@@ -113,6 +181,10 @@ def get_os_status() -> str:
     Stato del Mac stesso (non del processo API): CPU%, RAM, disco, uptime
     di sistema. Diverso da get_uptime(), che misura da quanto gira questo
     specifico processo uvicorn — qui è da quanto è acceso il Mac.
+
+    Include anche lo stato dei 5 modelli Ollama attesi (get_ollama_models_
+    status), così 'status sistema' dà in un colpo solo salute macchina +
+    disponibilità modelli, senza dover lanciare un comando separato.
     """
     cpu_percent = psutil.cpu_percent(interval=0.5)
 
@@ -139,7 +211,8 @@ def get_os_status() -> str:
         f"🖥️ CPU: {cpu_percent:.0f}%\n"
         f"🧠 RAM: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB ({mem.percent:.0f}%)\n"
         f"💾 Disco: {disk_used_gb:.1f} / {disk_total_gb:.1f} GB ({disk.percent:.0f}%)\n"
-        f"⏱️ Uptime Mac: {uptime_str}"
+        f"⏱️ Uptime Mac: {uptime_str}\n\n"
+        f"{get_ollama_models_status()}"
     )
 
 

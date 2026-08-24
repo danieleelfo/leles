@@ -25,6 +25,7 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
        ├── Export Agent     (export_agent.py)
        ├── Query Agent      (db_agent.py, ex "DB Agent")
        ├── Health Agent     (health_agent.py)
+       ├── Airflow Agent    (airflow_agent.py — trigger/status/pause DAG)
        └── Ollama Agent     (lele_engine9.py — gemma4 + llama3 review)
 """
 
@@ -63,6 +64,8 @@ AGENT_QUERY = "query"
 AGENT_LLAMA = "llama_review"
 AGENT_AIRFLOW = "airflow_trigger"
 AGENT_SYNTHESIZE = "synthesize"
+AGENT_DAG_PAUSE = "dag_pause"
+AGENT_DAG_UNPAUSE = "dag_unpause"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
 _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirata")
@@ -283,6 +286,35 @@ def is_ram_status_trigger(text: str) -> bool:
     return t.startswith("status ram") or t.startswith("ram status")
 
 
+def is_dag_pause_trigger(text: str) -> bool:
+    """'pausa dag <dag_id>' / 'pause dag <dag_id>' — DEVE essere controllato
+    prima del catch-all 'status', stesso motivo di is_ip_status_trigger."""
+    t = text.lower().strip()
+    return t.startswith("pausa dag ") or t.startswith("pause dag ")
+
+
+def parse_dag_pause_id(text: str) -> str:
+    t = text.strip()
+    for prefix in ("pausa dag ", "pause dag "):
+        if t.lower().startswith(prefix):
+            return t[len(prefix):].strip()
+    return ""
+
+
+def is_dag_unpause_trigger(text: str) -> bool:
+    """'attiva dag <dag_id>' / 'unpause dag <dag_id>'."""
+    t = text.lower().strip()
+    return t.startswith("attiva dag ") or t.startswith("unpause dag ")
+
+
+def parse_dag_unpause_id(text: str) -> str:
+    t = text.strip()
+    for prefix in ("attiva dag ", "unpause dag "):
+        if t.lower().startswith(prefix):
+            return t[len(prefix):].strip()
+    return ""
+
+
 def is_git_pull_force_trigger(text: str) -> bool:
     """'pull force <progetto>' — reset --hard su origin/main, per quando
     'pull report' si pianta per branch divergenti. Comando distruttivo,
@@ -429,6 +461,10 @@ def route(user_input: str) -> str:
         return AGENT_OS_STATUS
     if is_ram_status_trigger(text):
         return AGENT_RAM_STATUS
+    if is_dag_pause_trigger(text):
+        return AGENT_DAG_PAUSE
+    if is_dag_unpause_trigger(text):
+        return AGENT_DAG_UNPAUSE
     if is_tts_status_trigger(text):
         return AGENT_TTS_STATUS
     if is_airflow_status_trigger(text):

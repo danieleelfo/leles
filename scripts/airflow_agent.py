@@ -20,13 +20,14 @@ Config attesa in .env:
     AIRFLOW_PASSWORD   password auto-generata dal Simple Auth Manager
                        ($AIRFLOW_HOME/simple_auth_manager_passwords.json.generated)
 
-ATTENZIONE: KNOWN_DAGS qui sotto è un placeholder — va compilato con i
-dag_id reali del tuo Airflow (Admin > DAGs) e i parametri che ciascuno
-si aspetta in `conf`, altrimenti l'LLM non ha modo di sapere cosa esiste
-e rischia di inventare dag_id a caso (per questo route() rifiuta comunque
-qualsiasi dag_id non presente in questo dizionario, vedi extract_dag_params).
+ATTENZIONE: KNOWN_DAGS qui sotto va tenuto aggiornato con i dag_id reali
+del tuo Airflow e i parametri che ciascuno si aspetta in `conf`, altrimenti
+l'LLM non ha modo di sapere cosa esiste e rischia di inventare dag_id a
+caso (per questo route() rifiuta comunque qualsiasi dag_id non presente
+in questo dizionario, vedi extract_dag_params).
 """
 
+import re
 import os
 import json
 import time
@@ -124,13 +125,7 @@ def _api_request(method: str, path: str, json_body: dict = None, retry: bool = T
 # Ogni voce aiuta l'LLM a:
 #   1. scegliere il dag_id giusto invece di inventarlo
 #   2. sapere quali chiavi mettere in "conf" e con che tipo
-# Tipi/default presi da dags/emergence_dag.py e dags/emergence_pipeline_dag.py.
-#
-# NOTA: emergence_pipeline_dag.py chiama internamente anche un DAG
-# "emergence_lab_analysis" via TriggerDagRunOperator, ma quel file DAG
-# non è ancora stato condiviso qui — se esiste ed è pensato per essere
-# lanciabile anche da solo (non solo come step interno della pipeline),
-# aggiungilo a questo registro con i suoi param.
+# Tipi/default presi dai rispettivi file DAG.
 KNOWN_DAGS = {
     "emergence_dag": {
         "description": "Lancia una simulazione multi-agente concettuale e produce un audit di coerenza (LLM-as-a-Judge). Se target_run_id è 0 crea una nuova run, altrimenti rianalizza una run esistente.",
@@ -152,13 +147,38 @@ KNOWN_DAGS = {
             "judge_model": "str (opzionale, default 'mistral')",
         },
     },
-    "emergence_full_pipeline": {
-        "description": "Pipeline completa: lancia una nuova simulazione (emergence_dag) e poi triggera l'analisi (emergence_lab_analysis) passandole il run_id restituito.",
+    "decisione_dag": {
+        "description": "Estrae la decisione/conclusione presa in una run Emergence Lab già completata (analyze_decision, LLM-as-a-Judge)",
         "params": {
-            "scenario": "str, default 'Progettazione dell'architettura di coordinamento agenti'",
+            "run_id": "int, obbligatorio — ID di una run già esistente e completata",
+            "judge_model": "str, opzionale, default 'deepseek-r1'",
+        },
+    },
+    "sintetizza_dag": {
+        "description": "Sintetizza i risultati di una run Emergence Lab già completata: analizza tutti e 12 i ruoli individualmente + un'analisi globale (analyze_run, LLM-as-a-Judge)",
+        "params": {
+            "run_id": "int, obbligatorio — ID di una run già esistente e completata",
+            "model": "str, opzionale, default 'deepseek-r1'",
+            "pipeline_config": "str (JSON), opzionale — solo se serve passare contesto aggiuntivo",
+        },
+    },
+    "save_file_dag": {
+        "description": "Salva un file locale. Sintassi: 'salva file <path> con contenuto <<<CONTENUTO...CONTENUTO>>>'",
+        "params": {
+            "file_path": "str, path assoluto (es. /Users/danny/Desktop/Danny/Leles/AI_TMP/test.py)",
+            "content": "str, contenuto del file (DEVE essere tra <<<CONTENUTO e CONTENUTO>>>)",
+        },
+    },
+    "emergence_flow": {
+        "description": "Pipeline completa in un unico DAG: lancia una nuova simulazione multi-agente e poi l'analisi finale (target_role), senza dipendere da trigger inter-DAG (sostituisce il vecchio emergence_full_pipeline).",
+        "params": {
+            "scenario": "str, default 'Design coordinamento agenti'",
             "num_iterations": "int, default 3",
             "judge_model": "str, default 'qwen2.5'",
-            "target_role": "str, default 'ALL' (es. 'Planner', 'Critic', 'Builder', 'Scientist', 'Observer')",
+            "target_role": "str, default 'ALL' (es. 'Planner', 'Critic', 'Sheriff', ecc.)",
+            "temperature": "float, opzionale, default 0.7",
+            "seed": "int, opzionale, default 42",
+            "pipeline_config": "str (JSON), opzionale, default '{\"model_strategy\":\"fixed\"}'",
         },
     },
 }
@@ -273,6 +293,34 @@ def trigger_dag_run(dag_id: str, conf: dict):
     return False, f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
 
 
+_SAVE_FILE_RE = re.compile(
+    r"salva\s+(?:il\s+)?file\s+(?P<path>\S+)\s+con\s+contenuto\s*:?\s*"
+    r"<<<CONTENUTO\s*(?P<content>.*?)\s*CONTENUTO>>>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_save_file_request(user_text: str):
+    """
+    Estrae (file_path, content) da 'salva file <path> con contenuto
+    <<<CONTENUTO ... CONTENUTO>>>' SENZA passare dall'LLM.
+
+    Bypass intenzionale di extract_dag_params(): un LLM che deve
+    reincapsulare codice sorgente arbitrario (virgolette triple, newline,
+    backslash) dentro JSON è strutturalmente inaffidabile — prima o poi
+    rompe l'escaping (visto in pratica: un docstring con \"\"\" ha rotto
+    il JSON generato dall'LLM). Qui il contenuto va dritto in `json_body`
+    via requests, che gestisce l'escaping correttamente in automatico.
+
+    Ritorna None se il testo non matcha il pattern (fallback normale a
+    extract_dag_params, per gli altri DAG che non hanno questo problema).
+    """
+    match = _SAVE_FILE_RE.search(user_text)
+    if not match:
+        return None
+    return match.group("path").strip(), match.group("content")
+
+
 def airflow_agent(user_text: str) -> str:
     """
     Entry point chiamato da lele_api.py. `user_text` è già ripulito del
@@ -281,6 +329,16 @@ def airflow_agent(user_text: str) -> str:
     if not user_text.strip():
         known = ", ".join(KNOWN_DAGS.keys()) or "(nessuno registrato)"
         return f"🌬️ Dimmi quale DAG lanciare e con che parametri. DAG conosciuti: {known}"
+
+    # 'salva file' bypassa l'LLM — vedi nota in _parse_save_file_request.
+    save_request = _parse_save_file_request(user_text)
+    if save_request:
+        file_path, file_content = save_request
+        conf = {"file_path": file_path, "file_content": file_content}
+        ok, result = trigger_dag_run("save_file_dag", conf)
+        if not ok:
+            return result
+        return f"🌀 DAG 'save_file_dag' lanciato — run_id: {result}\nfile_path: {file_path} ({len(file_content)} caratteri)"
 
     dag_id, conf, error = extract_dag_params(user_text)
 
@@ -371,6 +429,36 @@ def get_all_dags_status() -> str:
         lines.append(f"  • {d.get('dag_id')} ({paused})")
 
     return "\n".join(lines)
+
+
+def set_dag_paused(dag_id: str, paused: bool) -> str:
+    """
+    PATCH /api/v2/dags/{dag_id} — attiva/disattiva un DAG (pause/unpause).
+    Un DAG appena salvato su disco parte sempre in pausa di default: senza
+    questo comando andava attivato a mano dalla UI di Airflow sul Mac,
+    impedendo di completare il ciclo "crea + testa DAG" interamente da
+    Telegram.
+    """
+    try:
+        response = _api_request(
+            "PATCH",
+            f"/api/v2/dags/{dag_id}?update_mask=is_paused",
+            json_body={"is_paused": paused},
+        )
+    except requests.exceptions.ConnectionError:
+        return f"❌ Airflow non raggiungibile su {AIRFLOW_BASE_URL} (porta 8085 attiva?)"
+    except RuntimeError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        return f"❌ Errore di rete verso Airflow: {e}"
+
+    if response.status_code == 404:
+        return f"❌ DAG '{dag_id}' non trovato su Airflow."
+    if response.status_code != 200:
+        return f"❌ Airflow ha risposto {response.status_code}: {response.text[:300]}"
+
+    stato = "attivato ▶️" if not paused else "messo in pausa ⏸️"
+    return f"✅ DAG '{dag_id}' {stato}."
 
 
 def get_latest_task_log(dag_id: str, task_id: str, try_number: int = 1) -> str:

@@ -32,8 +32,8 @@ from scripts.export_agent import export_agent
 from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status, git_diff, git_last_commit_diff
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice, export_dag_file
-from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_os_status, get_ram_breakdown
-from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log
+from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_ip_status, get_os_status, get_ram_breakdown
+from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log, set_dag_paused
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
 
@@ -69,6 +69,10 @@ from scripts.timoniere import (
     parse_task_log_args,
     AGENT_DECISION,
     parse_decision_args,
+    AGENT_DAG_PAUSE,
+    parse_dag_pause_id,
+    AGENT_DAG_UNPAUSE,
+    parse_dag_unpause_id,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_DIFF,
@@ -117,6 +121,8 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_AIRFLOW_STATUS,
     AGENT_TASK_LOG,
     AGENT_DECISION,
+    AGENT_DAG_PAUSE,
+    AGENT_DAG_UNPAUSE,
 }
 
 
@@ -229,10 +235,9 @@ def ask_lele(q: Question):
         return {"answer": result, "type": AGENT_LOGS}
 
     if agent == AGENT_IP_STATUS:
-        print("######## HEALTH AGENT (public ip) ########")
+        print("######## HEALTH AGENT (ip interno + pubblico) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
-        ip = get_public_ip()
-        result = f"🌐 IP pubblico attuale: {ip}\n\n(rete di casa: cambia nel tempo, non salvarlo come fisso)"
+        result = get_ip_status() + "\n\n(IP pubblico: rete di casa, cambia nel tempo, non salvarlo come fisso)"
         save_memory("LELE_P_IP_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_IP_STATUS}
 
@@ -249,6 +254,32 @@ def ask_lele(q: Question):
         result = get_ram_breakdown()
         save_memory("LELE_P_RAM_S_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_RAM_STATUS}
+
+    if agent == AGENT_DAG_PAUSE:
+        dag_id = parse_dag_pause_id(user_input)
+        print(f"######## AIRFLOW AGENT (pause, dag_id={dag_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not dag_id:
+            result = "❌ Uso: 'pausa dag <dag_id>' (es. 'pausa dag emergence_flow')"
+        else:
+            result = set_dag_paused(dag_id, paused=True)
+
+        save_memory("LELE_P_DAGPAUSE_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_DAG_PAUSE}
+
+    if agent == AGENT_DAG_UNPAUSE:
+        dag_id = parse_dag_unpause_id(user_input)
+        print(f"######## AIRFLOW AGENT (unpause, dag_id={dag_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not dag_id:
+            result = "❌ Uso: 'attiva dag <dag_id>' (es. 'attiva dag emergence_flow')"
+        else:
+            result = set_dag_paused(dag_id, paused=False)
+
+        save_memory("LELE_P_DAGUNPAUSE_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_DAG_UNPAUSE}
 
     if agent == AGENT_TTS_STATUS:
         project = extract_project(user_input)
@@ -477,7 +508,7 @@ def ask_lele(q: Question):
     return {"answer": gemma_out, "type": AGENT_GEMMA}
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 
 @app.get("/health")
