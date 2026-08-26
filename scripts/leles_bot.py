@@ -24,6 +24,7 @@ from tts_engine import synthesize_multilang_to_ogg
 from langdetect import detect, LangDetectException
 
 from timoniere import is_restart_leles_trigger
+from scripts.airflow_agent import AIRFLOW_HOME
 from datetime import datetime
 
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---
@@ -50,6 +51,13 @@ os.makedirs(VOICE_TMP_DIR, exist_ok=True)
 DETTATURA_DIR = os.path.join(PROJECT_ROOT, "Dettatura")
 
 os.makedirs(DETTATURA_DIR, exist_ok=True)
+
+# Cartella per file/documenti ricevuti via Telegram (allegati, non testo
+# via "salva file"/"invia file") — vive in AIRFLOW_HOME così il DAG
+# process_uploaded_file (che gira nel venv di Airflow) può leggerli senza
+# problemi di permessi cross-progetto.
+UPLOAD_DIR = os.path.join(AIRFLOW_HOME, "incoming_files")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Aiutino per Whisper: orienta la trascrizione verso i comandi noti di Lelé
 VOICE_INITIAL_PROMPT = "query, review, improve, edita, roast, critica"
@@ -192,7 +200,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`uvicorn status` → controlla se tutte le API sono vive\n"
         "`telegram status` → controlla se tutti i bot sono vivi\n"
         "`status sistema` → dashboard completa (API+bot+Ollama+Postgres)\n"
-        "`status ip` → indirizzo IP pubblico attuale (rete di casa, dinamico)\n"
+        "`status ip` → indirizzo IP interno + pubblico attuale\n"
         "`status os` → CPU/RAM/disco/uptime del Mac\n"
         "`status ram` → breakdown RAM + modelli Ollama caricati\n"
         "`status tts <progetto>` → voci Piper installate per quel progetto\n"
@@ -202,9 +210,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`directory dag [sottocartella]` → elenca i file nella cartella Airflow reale (non è in git)\n"
         "`export dag <nome_file.py>` → cerca e mostra il contenuto di un DAG (ricorsivo, tutta la cartella Airflow)\n"
         "`status dag [dag_id]` → ultime esecuzioni di un DAG, o elenco di tutti i DAG se omesso\n"
+        "`pausa dag <dag_id>` / `attiva dag <dag_id>` → pausa/attiva un DAG\n"
         "`logs <progetto>` → ultime righe dei log (es. 'logs ns'), utile se un processo parte e crasha subito\n"
         "`restart Lelé` → riavvia bot + API Leles (solo per questo bot)\n"
-        "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n\n"
+        "`start|stop|restart <bar_ai|lele|story_whisper>` → controlla i progetti esterni\n"
+        "`invia file <path>` → manda un file locale come allegato Telegram\n"
+        "`query emergence prompts [ruolo]` → mostra i system_prompt degli agenti Emergence Lab\n"
+        "`update emergence prompt <ruolo> as \"...\"` → aggiorna il system_prompt di un ruolo\n"
+        "Invia un documento/file → viene salvato e ti mando il comando pronto per spostarlo\n\n"
         "Nota: 'lele' da solo indica sempre il progetto Lelé (pirata), "
         "per riferirti a questo bot usa 'leles' per esteso.\n\n"
         "Comandi speciali:\n"
@@ -469,12 +482,58 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(ogg_out_path)
 
 
+async def handle_uploaded_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Documento in entrata (allegato binario Telegram, non testo) → salvato
+    in UPLOAD_DIR (dentro AIRFLOW_HOME/incoming_files) → risponde col
+    comando pronto per spostarlo via il DAG 'process_uploaded_file'.
+
+    Pensato per file troppo grandi per 'salva file'/'invia file' (che
+    passano da testo delimitato dentro un messaggio Telegram, quindi
+    limitati a ~4096 caratteri) — un documento allegato bypassa quel
+    limite del tutto, arrivando come bytes via Bot API.
+
+    Non lancia il DAG in automatico: il comando va copiato/incollato a
+    mano, così resti sempre in controllo di dove il file finisce prima
+    che tocchi le cartelle vere del progetto (stesso principio di
+    ALLOWED_BASE_DIRS in process_uploaded_file_dag.py, un livello più a
+    monte).
+    """
+    chat_id = update.effective_chat.id
+
+    if not is_authorized(chat_id):
+        await update.message.reply_text("⛔ Accesso non autorizzato.")
+        return
+
+    try:
+        document = update.message.document
+        # document.file_name può essere None per alcuni client — fallback
+        # su file_unique_id per non far esplodere os.path.join.
+        filename = document.file_name or f"file_{document.file_unique_id}"
+        file = await document.get_file()
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        await file.download_to_drive(file_path)
+
+        await update.message.reply_text(f"✅ File salvato: {file_path}")
+
+        command = (
+            f'exec airflow lancia process_uploaded_file conf: '
+            f'{{"file_path": "{file_path}", "target_path": "/Users/danny/Desktop/Danny/leles/"}}'
+        )
+        await update.message.reply_text(command)
+
+    except Exception as e:
+        logger.error(f"Errore ricezione file per {chat_id}: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Errore: {e}")
+
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_uploaded_file))
 
     logger.info("🏴‍☠️ Bot Lelé ES avviato (Porta API: 8082) — in ascolto delle sirene... 🧜🏻‍♀️ ")
 

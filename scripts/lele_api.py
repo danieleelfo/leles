@@ -36,6 +36,8 @@ from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_p
 from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log, set_dag_paused
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
+from core.emergence_prompts import get_prompts, update_prompt
+from scripts.invia_file_telegram import invia_file_telegram
 
 from scripts.timoniere import (
     route,
@@ -73,6 +75,12 @@ from scripts.timoniere import (
     parse_dag_pause_id,
     AGENT_DAG_UNPAUSE,
     parse_dag_unpause_id,
+    AGENT_QUERY_PROMPTS,
+    parse_query_prompts_role,
+    AGENT_UPDATE_PROMPT,
+    parse_update_prompt_args,
+    AGENT_SEND_FILE,
+    parse_send_file_path,
     AGENT_GIT_PULL,
     AGENT_GIT_PULL_FORCE,
     AGENT_GIT_DIFF,
@@ -94,7 +102,8 @@ app = FastAPI()
 ADMIN_IDS = [8733881519, 8249666123]
 
 # Agenti che richiedono privilegi admin (tutti tranne llama/gemma, che
-# restano aperti a tutti gli utenti Leles).
+# restano aperti a tutti gli utenti Leles). AGENT_QUERY_PROMPTS resta
+# fuori apposta: è sola lettura, non modifica nulla.
 _ADMIN_ONLY_AGENTS = {
     AGENT_AIRFLOW,
     AGENT_SYNTHESIZE,
@@ -123,6 +132,8 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_DECISION,
     AGENT_DAG_PAUSE,
     AGENT_DAG_UNPAUSE,
+    AGENT_UPDATE_PROMPT,
+    AGENT_SEND_FILE,
 }
 
 
@@ -280,6 +291,50 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_DAGUNPAUSE_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_DAG_UNPAUSE}
+
+    if agent == AGENT_QUERY_PROMPTS:
+        role = parse_query_prompts_role(user_input)
+        print(f"######## EMERGENCE PROMPTS (query, role={role or 'ALL'}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        prompts = get_prompts(role or None)
+        if not prompts:
+            result = f"❌ Nessun agente trovato per ruolo '{role}'." if role else "❌ Nessun agente trovato."
+        else:
+            result = "\n\n".join(
+                f"🎭 {p['name']} (v{p['version']}):\n{p['system_prompt']}" for p in prompts
+            )
+
+        save_memory("LELE_P_QPROMPTS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_QUERY_PROMPTS}
+
+    if agent == AGENT_UPDATE_PROMPT:
+        role, new_prompt = parse_update_prompt_args(user_input)
+        print(f"######## EMERGENCE PROMPTS (update, role={role}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not role or not new_prompt:
+            result = '❌ Uso: \'update emergence prompt <ruolo> as "nuovo prompt"\''
+        else:
+            ok = update_prompt(role, new_prompt)
+            result = f"✅ Prompt di '{role}' aggiornato." if ok else f"❌ Ruolo '{role}' non trovato."
+
+        save_memory("LELE_P_UPPROMPT_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_UPDATE_PROMPT}
+
+    if agent == AGENT_SEND_FILE:
+        file_path = parse_send_file_path(user_input)
+        print(f"######## SEND FILE (path={file_path}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not file_path:
+            result = "❌ Uso: 'invia file <path>' (es. 'invia file /Users/danny/Desktop/Danny/leles/scripts/timoniere.py')"
+        else:
+            ok = invia_file_telegram(file_path, chat_id=str(q.chat_id) if q.chat_id else None)
+            result = f"✅ File inviato: {file_path}" if ok else f"❌ Invio fallito per: {file_path}"
+
+        save_memory("LELE_P_SENDFILE_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_SEND_FILE}
 
     if agent == AGENT_TTS_STATUS:
         project = extract_project(user_input)
@@ -508,7 +563,7 @@ def ask_lele(q: Question):
     return {"answer": gemma_out, "type": AGENT_GEMMA}
 
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 
 @app.get("/health")

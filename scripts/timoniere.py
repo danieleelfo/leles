@@ -26,6 +26,8 @@ scelto (es. gemma4 dentro l'Ollama Agent, o dentro il Verify Agent).
        ├── Query Agent      (db_agent.py, ex "DB Agent")
        ├── Health Agent     (health_agent.py)
        ├── Airflow Agent    (airflow_agent.py — trigger/status/pause DAG)
+       ├── Emergence Prompts (core/emergence_prompts.py — query/update
+       │                      system_prompt degli agenti Emergence Lab)
        └── Ollama Agent     (lele_engine9.py — gemma4 + llama3 review)
 """
 
@@ -66,6 +68,9 @@ AGENT_AIRFLOW = "airflow_trigger"
 AGENT_SYNTHESIZE = "synthesize"
 AGENT_DAG_PAUSE = "dag_pause"
 AGENT_DAG_UNPAUSE = "dag_unpause"
+AGENT_QUERY_PROMPTS = "query_emergence_prompts"
+AGENT_UPDATE_PROMPT = "update_emergence_prompt"
+AGENT_SEND_FILE = "send_file_telegram"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
 _LLAMA_WORDS = ("edita", "review", "roast", "llama", "llama3", "critica", "pirata")
@@ -315,6 +320,64 @@ def parse_dag_unpause_id(text: str) -> str:
     return ""
 
 
+def is_query_prompts_trigger(text: str) -> bool:
+    """'query emergence prompts [ruolo]' — DEVE essere controllato prima di
+    is_query_trigger (fuzzy-match generico su "query" in lele_engine9.py),
+    altrimenti verrebbe intercettato come query DB generica invece che come
+    lettura dei system_prompt degli agenti Emergence Lab."""
+    return text.lower().strip().startswith("query emergence prompts")
+
+
+def parse_query_prompts_role(text: str) -> str:
+    """
+    'query emergence prompts Builder' -> 'Builder'
+    'query emergence prompts (Builder)' -> 'Builder'
+    'query emergence prompts' -> '' (tutti i ruoli)
+    """
+    t = text.strip()
+    prefix = "query emergence prompts"
+    if t.lower().startswith(prefix):
+        rest = t[len(prefix):].strip()
+        return rest.strip("()").strip()
+    return ""
+
+
+def is_update_prompt_trigger(text: str) -> bool:
+    """'update emergence prompt <ruolo> as "..."' — scrittura, admin-only."""
+    return text.lower().strip().startswith("update emergence prompt")
+
+
+def parse_update_prompt_args(text: str):
+    """
+    'update emergence prompt Builder as "Nuovo prompt qui"' ->
+    ('Builder', 'Nuovo prompt qui'). Ritorna (None, None) se non parsa
+    (manca il ruolo, manca 'as', o le virgolette non sono chiuse).
+    """
+    m = re.match(
+        r'update\s+emergence\s+prompt\s+(?P<role>\S+)\s+as\s+"(?P<prompt>.*)"\s*$',
+        text.strip(),
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not m:
+        return None, None
+    return m.group("role"), m.group("prompt")
+
+
+def is_send_file_trigger(text: str) -> bool:
+    """'invia file <path>' — manda un file locale come allegato Telegram
+    (scripts/invia_file_telegram.py), utile per file troppo grandi per
+    'esporta' (che tronca a ~3900 caratteri di testo)."""
+    t = text.lower().strip()
+    return t.startswith("invia file ")
+
+
+def parse_send_file_path(text: str) -> str:
+    t = text.strip()
+    if t.lower().startswith("invia file "):
+        return t[len("invia file "):].strip()
+    return ""
+
+
 def is_git_pull_force_trigger(text: str) -> bool:
     """'pull force <progetto>' — reset --hard su origin/main, per quando
     'pull report' si pianta per branch divergenti. Comando distruttivo,
@@ -465,6 +528,12 @@ def route(user_input: str) -> str:
         return AGENT_DAG_PAUSE
     if is_dag_unpause_trigger(text):
         return AGENT_DAG_UNPAUSE
+    if is_query_prompts_trigger(text):
+        return AGENT_QUERY_PROMPTS
+    if is_update_prompt_trigger(text):
+        return AGENT_UPDATE_PROMPT
+    if is_send_file_trigger(text):
+        return AGENT_SEND_FILE
     if is_tts_status_trigger(text):
         return AGENT_TTS_STATUS
     if is_airflow_status_trigger(text):

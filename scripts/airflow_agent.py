@@ -181,6 +181,13 @@ KNOWN_DAGS = {
             "pipeline_config": "str (JSON), opzionale, default '{\"model_strategy\":\"fixed\"}'",
         },
     },
+    "process_uploaded_file": {
+        "description": "Sposta un file gia' presente sul filesystem da file_path a target_path (dentro le directory consentite: leles, airflow, AI_TMP). Usato per spostare file salvati manualmente prima del lancio.",
+        "params": {
+            "file_path": "str, obbligatorio — path assoluto del file sorgente",
+            "target_path": "str, opzionale, default '/Users/danny/Desktop/Danny/leles/'",
+        },
+    },
 }
 
 SYSTEM_EXTRACT = """You are a router that converts a natural language request into a JSON
