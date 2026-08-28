@@ -8,6 +8,7 @@ Features:
 - Core Agent Roles (Planner, Scientist, Builder, Critic, Observer)
 - Tech Pipeline Roles (Architect, Developer, Tester, Reviewer)
 - Social & Game Theory Roles (Sheriff, Outlaw, Explorer)
+- Memory Run Summary Table
 
 Safe to execute multiple times.
 
@@ -147,6 +148,18 @@ CREATE TABLE IF NOT EXISTS emergence.metrics (
 );
 """,
 
+# Memory Run Summary
+"""
+CREATE TABLE IF NOT EXISTS emergence.memory_run_summary (
+    id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL UNIQUE REFERENCES emergence.runs(id) ON DELETE CASCADE,
+    scenario TEXT NOT NULL,
+    judge_model TEXT NOT NULL,
+    decision_report TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""",
+
 # INDEXES
 """CREATE INDEX IF NOT EXISTS idx_exp_runs ON emergence.runs(experiment_id);""",
 """CREATE INDEX IF NOT EXISTS idx_iterations_run ON emergence.iterations(run_id);""",
@@ -155,7 +168,8 @@ CREATE TABLE IF NOT EXISTS emergence.metrics (
 """CREATE INDEX IF NOT EXISTS idx_messages_model ON emergence.messages(model_id);""",
 """CREATE INDEX IF NOT EXISTS idx_metrics_iteration ON emergence.metrics(iteration_id);""",
 """CREATE INDEX IF NOT EXISTS idx_metrics_agent ON emergence.metrics(agent_id);""",
-"""CREATE INDEX IF NOT EXISTS idx_metrics_model ON emergence.metrics(model_id);"""
+"""CREATE INDEX IF NOT EXISTS idx_metrics_model ON emergence.metrics(model_id);""",
+"""CREATE INDEX IF NOT EXISTS idx_memory_summary_run ON emergence.memory_run_summary(run_id);"""
 
 ]
 

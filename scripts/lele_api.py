@@ -37,6 +37,7 @@ from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_da
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
 from core.emergence_prompts import get_prompts, update_prompt
+from core.emergence_messages import get_recent_messages
 from scripts.invia_file_telegram import invia_file_telegram
 
 from scripts.timoniere import (
@@ -79,6 +80,8 @@ from scripts.timoniere import (
     parse_query_prompts_role,
     AGENT_UPDATE_PROMPT,
     parse_update_prompt_args,
+    AGENT_QUERY_MESSAGES,
+    parse_query_messages_args,
     AGENT_SEND_FILE,
     parse_send_file_path,
     AGENT_GIT_PULL,
@@ -321,6 +324,26 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_UPPROMPT_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_UPDATE_PROMPT}
+
+    if agent == AGENT_QUERY_MESSAGES:
+        n, role, model = parse_query_messages_args(user_input)
+        print(f"######## EMERGENCE MESSAGES (last={n}, role={role}, model={model}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not n:
+            result = "❌ Uso: 'QE last N [ruolo] [modello]' (es. 'QE last 3 Observer gemma4')"
+        else:
+            msgs = get_recent_messages(limit=n, role=role, model=model)
+            if not msgs:
+                result = "❌ Nessun messaggio trovato."
+            else:
+                result = "\n\n".join(
+                    f"🎭 {m['agent']} ({m['model']}) — run {m['run_id']}, it.{m['iteration']}\n{m['response'][:2500]}"
+                    for m in msgs
+                )
+
+        save_memory("LELE_P_QMSG_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_QUERY_MESSAGES}
 
     if agent == AGENT_SEND_FILE:
         file_path = parse_send_file_path(user_input)

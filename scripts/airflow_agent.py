@@ -6,6 +6,10 @@ per il trigger.
 Flusso trigger:
     "exec airflow <richiesta in linguaggio naturale>"
         │
+    "exec airflow <richiesta>"
+        │
+        ├─► _parse_save_file_request()     — Bypass LLM per salvataggio file
+        ├─► _parse_explicit_conf_request() — Bypass LLM se presente conf: {...}
         ▼
     extract_dag_params()  — LLM (Ollama) legge KNOWN_DAGS + richiesta,
                              ritorna JSON {"dag_id": ..., "conf": {...}}
@@ -181,6 +185,13 @@ KNOWN_DAGS = {
             "pipeline_config": "str (JSON), opzionale, default '{\"model_strategy\":\"fixed\"}'",
         },
     },
+    "process_multiple_files": {
+        "description": "Sposta MULTIPLI file, ognuno nella SUA destinazione. file_paths e target_paths devono avere la stessa lunghezza.",
+        "params": {
+            "file_paths": "list, obbligatorio — lista di path assoluti dei file sorgente",
+            "target_paths": "list, obbligatorio — lista di path di destinazione (uno per ogni file)",
+        },
+    },
     "process_uploaded_file": {
         "description": "Sposta un file gia' presente sul filesystem da file_path a target_path (dentro le directory consentite: leles, airflow, AI_TMP). Usato per spostare file salvati manualmente prima del lancio.",
         "params": {
@@ -188,7 +199,15 @@ KNOWN_DAGS = {
             "target_path": "str, opzionale, default '/Users/danny/Desktop/Danny/leles/'",
         },
     },
+    "memory_summary_dag": {
+        "description": "Consolida il report di una run Emergence Lab nella tabella di memoria storica (emergence.memory_run_summary). Estrae la decisione con un giudice LLM e la salva in DB.",
+        "params": {
+            "run_id": "int, obbligatorio — ID di una run già esistente e completata",
+            "judge_model": "str, opzionale, default 'llama3'",
+        },
+    },
 }
+
 
 SYSTEM_EXTRACT = """You are a router that converts a natural language request into a JSON
 object describing which Airflow DAG to trigger and with which parameters.
@@ -232,7 +251,7 @@ def extract_dag_params(user_text: str):
                     {"role": "user", "content": user_text},
                 ],
                 "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 300},
+                "options": {"temperature": 0.1, "num_predict": 1024},
             },
             timeout=60,
         )
@@ -328,6 +347,36 @@ def _parse_save_file_request(user_text: str):
     return match.group("path").strip(), match.group("content")
 
 
+
+_EXPLICIT_CONF_RE = re.compile(
+    r"lancia\s+(?P<dag_id>[a-zA-Z0-9_-]+)\s+conf\s*:\s*(?P<conf_json>\{.*\})",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_explicit_conf_request(user_text: str):
+    """
+    Se l'utente scrive esplicitamente 'lancia <dag_id> conf: {...}',
+    estrae il JSON direttamente via codice ed evita di passare dall'LLM,
+    prevenendo troncamenti dello scenario o allucinazioni del modello.
+    """
+    match = _EXPLICIT_CONF_RE.search(user_text.strip())
+    if not match:
+        return None, None, None
+
+    dag_id = match.group("dag_id").strip()
+    conf_raw = match.group("conf_json").strip()
+
+    if dag_id not in KNOWN_DAGS:
+        return None, None, f"DAG '{dag_id}' non riconosciuto (non in KNOWN_DAGS)"
+
+    try:
+        conf = json.loads(conf_raw)
+        return dag_id, conf, None
+    except json.JSONDecodeError as e:
+        return None, None, f"JSON in 'conf' non valido: {e}"
+
+
 def airflow_agent(user_text: str) -> str:
     """
     Entry point chiamato da lele_api.py. `user_text` è già ripulito del
@@ -346,6 +395,17 @@ def airflow_agent(user_text: str) -> str:
         if not ok:
             return result
         return f"🌀 DAG 'save_file_dag' lanciato — run_id: {result}\nfile_path: {file_path} ({len(file_content)} caratteri)"
+        
+        # Bypass LLM se l'utente fornisce direttamente un blocco 'conf: {...}'
+    exp_dag_id, exp_conf, exp_error = _parse_explicit_conf_request(user_text)
+    if exp_error:
+        return f"❌ {exp_error}"
+    if exp_dag_id:
+        ok, result = trigger_dag_run(exp_dag_id, exp_conf)
+        if not ok:
+            return result
+        conf_str = json.dumps(exp_conf, ensure_ascii=False)
+        return f"🌀 DAG '{exp_dag_id}' lanciato (Bypass LLM OK) — run_id: {result}\nconf: {conf_str}"
 
     dag_id, conf, error = extract_dag_params(user_text)
 

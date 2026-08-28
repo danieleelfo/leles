@@ -70,6 +70,7 @@ AGENT_DAG_PAUSE = "dag_pause"
 AGENT_DAG_UNPAUSE = "dag_unpause"
 AGENT_QUERY_PROMPTS = "query_emergence_prompts"
 AGENT_UPDATE_PROMPT = "update_emergence_prompt"
+AGENT_QUERY_MESSAGES = "query_emergence_messages"
 AGENT_SEND_FILE = "send_file_telegram"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
@@ -320,6 +321,40 @@ def parse_dag_unpause_id(text: str) -> str:
     return ""
 
 
+_QE_LAST_RE = re.compile(
+    r"qe\s+last\s+(?P<n>\d+)(?:\s+(?P<rest>.*))?$",
+    re.IGNORECASE,
+)
+
+
+def is_query_messages_trigger(text: str) -> bool:
+    """'QE last N [ruolo] [modello]' — legge gli ultimi N messaggi da
+    emergence.messages, per monitorare una run Emergence Lab in tempo
+    reale senza aspettare che il DAG finisca. DEVE stare prima di
+    is_query_prompts_trigger/is_query_trigger nel route(), stesso motivo
+    di is_ip_status_trigger: altrimenti verrebbe intercettato da un
+    check 'query' più generico."""
+    return bool(_QE_LAST_RE.match(text.strip()))
+
+
+def parse_query_messages_args(text: str):
+    """
+    'QE last 3' -> (3, None, None)
+    'QE last 3 Observer' -> (3, 'Observer', None)
+    'QE last 3 Observer gemma4' -> (3, 'Observer', 'gemma4')
+    Ritorna (None, None, None) se non parsa.
+    """
+    m = _QE_LAST_RE.match(text.strip())
+    if not m:
+        return None, None, None
+    n = int(m.group("n"))
+    rest = (m.group("rest") or "").strip()
+    parts = rest.split()
+    role = parts[0] if len(parts) > 0 else None
+    model = parts[1] if len(parts) > 1 else None
+    return n, role, model
+
+
 def is_query_prompts_trigger(text: str) -> bool:
     """'query emergence prompts [ruolo]' — DEVE essere controllato prima di
     is_query_trigger (fuzzy-match generico su "query" in lele_engine9.py),
@@ -528,6 +563,8 @@ def route(user_input: str) -> str:
         return AGENT_DAG_PAUSE
     if is_dag_unpause_trigger(text):
         return AGENT_DAG_UNPAUSE
+    if is_query_messages_trigger(text):
+        return AGENT_QUERY_MESSAGES
     if is_query_prompts_trigger(text):
         return AGENT_QUERY_PROMPTS
     if is_update_prompt_trigger(text):
