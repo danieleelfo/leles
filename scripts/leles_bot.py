@@ -24,7 +24,7 @@ from tts_engine import synthesize_multilang_to_ogg
 from langdetect import detect, LangDetectException
 
 from timoniere import is_restart_leles_trigger
-from scripts.airflow_agent import AIRFLOW_HOME
+from airflow_agent import AIRFLOW_HOME
 from datetime import datetime
 
 # --- Config (Caricata da ambiente o fallback su porta 8080) ---

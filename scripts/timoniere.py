@@ -71,6 +71,10 @@ AGENT_DAG_UNPAUSE = "dag_unpause"
 AGENT_QUERY_PROMPTS = "query_emergence_prompts"
 AGENT_UPDATE_PROMPT = "update_emergence_prompt"
 AGENT_QUERY_MESSAGES = "query_emergence_messages"
+AGENT_QUERY_STATUS = "query_emergence_status"
+AGENT_SAVE_WORLD = "save_world"
+AGENT_QUERY_WORLDS = "query_worlds"
+AGENT_QUERY_WORLD = "query_world"
 AGENT_SEND_FILE = "send_file_telegram"
 AGENT_GEMMA = "gemma"  # fallback finale, se nessun altro trigger matcha
 
@@ -339,20 +343,92 @@ def is_query_messages_trigger(text: str) -> bool:
 
 def parse_query_messages_args(text: str):
     """
-    'QE last 3' -> (3, None, None)
-    'QE last 3 Observer' -> (3, 'Observer', None)
-    'QE last 3 Observer gemma4' -> (3, 'Observer', 'gemma4')
-    Ritorna (None, None, None) se non parsa.
+    'QE last 3' -> (3, None, None, 'asc')
+    'QE last 3 Observer' -> (3, 'Observer', None, 'asc')
+    'QE last 3 Observer gemma4' -> (3, 'Observer', 'gemma4', 'asc')
+    'QE last 3 desc' -> (3, None, None, 'desc')
+    'QE last 10 outlaw desc' -> (10, 'outlaw', None, 'desc')
+    Default 'asc': prende comunque gli ULTIMI N eventi, ma li ritorna in
+    ordine cronologico crescente (più naturale da leggere in sequenza) —
+    non i primi N assoluti della tabella. 'desc' come opt-in esplicito
+    per il vecchio comportamento (ultimi N, più recente prima).
     """
     m = _QE_LAST_RE.match(text.strip())
     if not m:
-        return None, None, None
+        return None, None, None, None
     n = int(m.group("n"))
     rest = (m.group("rest") or "").strip()
-    parts = rest.split()
-    role = parts[0] if len(parts) > 0 else None
-    model = parts[1] if len(parts) > 1 else None
-    return n, role, model
+    tokens = rest.split()
+
+    order = "asc"
+    filtered = []
+    for tok in tokens:
+        if tok.lower() in ("asc", "desc"):
+            order = tok.lower()
+        else:
+            filtered.append(tok)
+
+    role = filtered[0] if len(filtered) > 0 else None
+    model = filtered[1] if len(filtered) > 1 else None
+    return n, role, model, order
+
+
+_QE_STATUS_RE = re.compile(r"qe\s+status(?:\s+(?P<run_id>\d+))?$", re.IGNORECASE)
+
+
+def is_query_status_trigger(text: str) -> bool:
+    """'QE status [run_id]' — vista compatta stato-esecuzione (run,
+    iterazione, ruolo, modello, durata, orario), senza il testo delle
+    risposte."""
+    return bool(_QE_STATUS_RE.match(text.strip()))
+
+
+def parse_query_status_args(text: str):
+    """'QE status' -> None (ultime attività, qualsiasi run); 'QE status 96' -> 96."""
+    m = _QE_STATUS_RE.match(text.strip())
+    if not m:
+        return None
+    run_id = m.group("run_id")
+    return int(run_id) if run_id else None
+
+
+_SAVE_WORLD_RE = re.compile(
+    r'save\s+world\s+(?P<name>\S+)\s+as\s+"(?P<description>.*)"\s*$',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def is_save_world_trigger(text: str) -> bool:
+    """'save world <nome> as "<testo scenario>"' — salva un nuovo scenario
+    riusabile per emergence_flow (world_id invece di riscrivere il testo)."""
+    return text.lower().strip().startswith("save world ")
+
+
+def parse_save_world_args(text: str):
+    """'save world isola_omega as "Protocollo Omega..."' -> ('isola_omega', 'Protocollo Omega...')."""
+    m = _SAVE_WORLD_RE.match(text.strip())
+    if not m:
+        return None, None
+    return m.group("name").strip(), m.group("description").strip()
+
+
+def is_query_worlds_trigger(text: str) -> bool:
+    """'query worlds' — lista scenari salvati (id + nome, non il testo)."""
+    return text.lower().strip() == "query worlds"
+
+
+_QUERY_WORLD_RE = re.compile(r"query\s+world\s+(?P<id>\d+)\s*$", re.IGNORECASE)
+
+
+def is_query_world_trigger(text: str) -> bool:
+    """'query world <id>' — DEVE stare prima di is_query_prompts_trigger,
+    stesso motivo degli altri trigger 'query *' specifici."""
+    return bool(_QUERY_WORLD_RE.match(text.strip()))
+
+
+def parse_query_world_id(text: str):
+    m = _QUERY_WORLD_RE.match(text.strip())
+    return int(m.group("id")) if m else None
 
 
 def is_query_prompts_trigger(text: str) -> bool:
@@ -565,6 +641,14 @@ def route(user_input: str) -> str:
         return AGENT_DAG_UNPAUSE
     if is_query_messages_trigger(text):
         return AGENT_QUERY_MESSAGES
+    if is_query_status_trigger(text):
+        return AGENT_QUERY_STATUS
+    if is_save_world_trigger(text):
+        return AGENT_SAVE_WORLD
+    if is_query_worlds_trigger(text):
+        return AGENT_QUERY_WORLDS
+    if is_query_world_trigger(text):
+        return AGENT_QUERY_WORLD
     if is_query_prompts_trigger(text):
         return AGENT_QUERY_PROMPTS
     if is_update_prompt_trigger(text):

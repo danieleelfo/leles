@@ -18,10 +18,28 @@ logger = logging.getLogger(__name__)
 # (risposte quasi vuote, non un'eccezione — per questo il bug era silenzioso).
 JUDGE_NUM_CTX = 32768
 
+# num_predict esplicito per le chiamate al giudice — deve combaciare con
+# quello passato a query_model qui sotto, altrimenti il calcolo del
+# margine riservato in MAX_TRANSCRIPT_CHARS è sbagliato.
+JUDGE_NUM_PREDICT = 4096
+
+# BUG STORICO (fix applicato): num_ctx è la finestra TOTALE condivisa tra
+# prompt in ingresso e risposta in uscita, non due budget separati.
+# MAX_TRANSCRIPT_CHARS calcolato come JUDGE_NUM_CTX*3 riempiva ~100% della
+# finestra con la sola trascrizione, lasciando ZERO margine per la
+# risposta del giudice — su scenari lunghi (es. "Protocollo Omega") il
+# prompt totale (system+scenario+trascrizione) saturava num_ctx e Ollama
+# non aveva più spazio per generare nemmeno un token di output: risposta
+# vuota, sempre, indipendentemente dal modello (visto con llama3, ma
+# capita a qualsiasi modello con scenari abbastanza lunghi).
+# Fix: riservare esplicitamente spazio per system prompt (~500 token) +
+# risposta del giudice (JUDGE_NUM_PREDICT), non solo per la trascrizione.
+_RESERVED_TOKENS = JUDGE_NUM_PREDICT + 500
+
 # ~4 caratteri per token è una stima approssimativa ma sufficiente qui: se
 # la trascrizione supera comunque questa soglia anche con num_ctx alzato,
 # meglio un errore chiaro che un altro giudizio silenziosamente mutilato.
-MAX_TRANSCRIPT_CHARS = JUDGE_NUM_CTX * 3
+MAX_TRANSCRIPT_CHARS = (JUDGE_NUM_CTX - _RESERVED_TOKENS) * 3
 
 
 def _cap_transcript(transcript_text: str) -> tuple:
@@ -226,6 +244,7 @@ Fornisci un report dettagliato rispondendo ai seguenti punti:
         system_prompt=system_prompt,
         temperature=0.3,
         num_ctx=JUDGE_NUM_CTX,
+        num_predict=JUDGE_NUM_PREDICT,
     )
 
     # 1. Recupero sicuro della risposta con fallback
@@ -361,6 +380,7 @@ Rispondi punto per punto:
         system_prompt=system_prompt,
         temperature=0.3,
         num_ctx=JUDGE_NUM_CTX,
+        num_predict=JUDGE_NUM_PREDICT,
     )
 
     report = result.get("response") if isinstance(result, dict) else None

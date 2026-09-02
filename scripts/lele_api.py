@@ -37,7 +37,8 @@ from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_da
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
 from core.emergence_prompts import get_prompts, update_prompt
-from core.emergence_messages import get_recent_messages
+from core.emergence_messages import get_recent_messages, get_run_progress
+from core.emergence_worlds import save_world, get_world, list_worlds
 from scripts.invia_file_telegram import invia_file_telegram
 
 from scripts.timoniere import (
@@ -82,6 +83,13 @@ from scripts.timoniere import (
     parse_update_prompt_args,
     AGENT_QUERY_MESSAGES,
     parse_query_messages_args,
+    AGENT_QUERY_STATUS,
+    parse_query_status_args,
+    AGENT_SAVE_WORLD,
+    parse_save_world_args,
+    AGENT_QUERY_WORLDS,
+    AGENT_QUERY_WORLD,
+    parse_query_world_id,
     AGENT_SEND_FILE,
     parse_send_file_path,
     AGENT_GIT_PULL,
@@ -136,6 +144,7 @@ _ADMIN_ONLY_AGENTS = {
     AGENT_DAG_PAUSE,
     AGENT_DAG_UNPAUSE,
     AGENT_UPDATE_PROMPT,
+    AGENT_SAVE_WORLD,
     AGENT_SEND_FILE,
 }
 
@@ -326,24 +335,82 @@ def ask_lele(q: Question):
         return {"answer": result, "type": AGENT_UPDATE_PROMPT}
 
     if agent == AGENT_QUERY_MESSAGES:
-        n, role, model = parse_query_messages_args(user_input)
+        n, role, model, order = parse_query_messages_args(user_input)
         print(f"######## EMERGENCE MESSAGES (last={n}, role={role}, model={model}) ########")
         save_memory("USER_ES", user_input, chat_id=q.chat_id)
 
         if not n:
             result = "❌ Uso: 'QE last N [ruolo] [modello]' (es. 'QE last 3 Observer gemma4')"
         else:
-            msgs = get_recent_messages(limit=n, role=role, model=model)
+            msgs = get_recent_messages(limit=n, role=role, model=model, order=order)
             if not msgs:
                 result = "❌ Nessun messaggio trovato."
             else:
                 result = "\n\n".join(
-                    f"🎭 {m['agent']} ({m['model']}) — run {m['run_id']}, it.{m['iteration']}\n{m['response'][:2500]}"
+                    f"🎭 {m['agent']} ({m['model']}) — run {m['run_id']}, it.{m['iteration']}\n{m['response']}"
                     for m in msgs
                 )
 
         save_memory("LELE_P_QMSG_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_QUERY_MESSAGES}
+
+    if agent == AGENT_QUERY_STATUS:
+        run_id = parse_query_status_args(user_input)
+        print(f"######## EMERGENCE STATUS (run_id={run_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        rows = get_run_progress(run_id=run_id, limit=15)
+        if not rows:
+            result = "❌ Nessun dato trovato."
+        else:
+            result = "\n".join(
+                f"Run {r['run_id']} | it.{r['iteration']} | {r['agent']} ({r['model']}) | {r['duration_ms']}ms | {r['created_at'][11:19]}"
+                for r in rows
+            )
+
+        save_memory("LELE_P_QSTATUS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_QUERY_STATUS}
+
+    if agent == AGENT_SAVE_WORLD:
+        name, description = parse_save_world_args(user_input)
+        print(f"######## SAVE WORLD (name={name}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not name or not description:
+            result = '❌ Uso: \'save world <nome> as "testo scenario"\''
+        else:
+            world_id = save_world(name, description)
+            result = f"✅ Scenario salvato — id {world_id} ({name})"
+
+        save_memory("LELE_P_SAVEWORLD_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_SAVE_WORLD}
+
+    if agent == AGENT_QUERY_WORLDS:
+        print("######## QUERY WORLDS ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        worlds = list_worlds()
+        if not worlds:
+            result = "❌ Nessuno scenario salvato."
+        else:
+            result = "\n".join(f"#{w['id']} — {w['name']} ({w['created_at'][:10]})" for w in worlds)
+
+        save_memory("LELE_P_QWORLDS_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_QUERY_WORLDS}
+
+    if agent == AGENT_QUERY_WORLD:
+        world_id = parse_query_world_id(user_input)
+        print(f"######## QUERY WORLD (id={world_id}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not world_id:
+            result = "❌ Uso: 'query world <id>'"
+        else:
+            world = get_world(world_id)
+            result = f"🌍 #{world['id']} — {world['name']}\n\n{world['description']}" if world else f"❌ Scenario #{world_id} non trovato."
+
+        save_memory("LELE_P_QWORLD_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_QUERY_WORLD}
 
     if agent == AGENT_SEND_FILE:
         file_path = parse_send_file_path(user_input)
