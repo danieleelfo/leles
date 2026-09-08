@@ -50,6 +50,8 @@ AGENT_TTS_INSTALL = "tts_install"
 AGENT_EXPORT_DAG = "export_dag"
 AGENT_AIRFLOW_STATUS = "airflow_status"
 AGENT_DECISION = "decision"
+AGENT_DECISION_RUN = "decision_run_dag"
+AGENT_CREA_DAG = "crea_dag"
 AGENT_IP_STATUS = "ip_status"
 AGENT_OS_STATUS = "os_status"
 AGENT_RAM_STATUS = "ram_status"
@@ -192,7 +194,10 @@ def parse_task_log_args(text: str):
 
 
 def is_decision_trigger(text: str) -> bool:
-    """'decisione <run_id> [judge_model]' — estrae la conclusione/decisione presa in una run."""
+    """'decisione <run_id> [judge_model]' — estrae la conclusione/decisione presa in una run.
+    ATTENZIONE: è un catch-all su 'decisione '. is_decision_run_trigger (sotto)
+    DEVE essere controllato PRIMA nel route(), altrimenti 'decisione run 47'
+    verrebbe sempre intercettato qui."""
     return text.lower().strip().startswith("decisione ")
 
 
@@ -210,6 +215,51 @@ def parse_decision_args(text: str):
         judge_model = parts[1] if len(parts) > 1 else None
         return run_id, judge_model
     return None, None
+
+
+def is_decision_run_trigger(text: str) -> bool:
+    """'decisione run <run_id> [judge_model]' / 'decisione dag <run_id> [judge_model]'
+    — lancia il DAG Airflow decisione_run_dag: analisi per-iterazione mappata +
+    ricostruzione evoluzione + estrazione/validazione decisione finale. Molto
+    più pesante e completo del comando sincrono 'decisione <run_id>' (che resta
+    invariato, vedi is_decision_trigger). Va SEMPRE controllato prima di
+    is_decision_trigger nel route()."""
+    t = text.lower().strip()
+    return t.startswith("decisione run ") or t.startswith("decisione dag ")
+
+
+def parse_decision_run_args(text: str):
+    """'decisione run 47 deepseek-r1' -> (47, 'deepseek-r1'); 'decisione dag 47' -> (47, None)."""
+    t = text.strip()
+    low = t.lower()
+    for prefix in ("decisione run ", "decisione dag "):
+        if low.startswith(prefix):
+            parts = t[len(prefix):].strip().split()
+            if not parts:
+                return None, None
+            try:
+                run_id = int(parts[0])
+            except ValueError:
+                return None, None
+            judge_model = parts[1] if len(parts) > 1 else None
+            return run_id, judge_model
+    return None, None
+
+
+def is_crea_dag_trigger(text: str) -> bool:
+    """'crea dag <descrizione in linguaggio naturale>' — genera via LLM gli
+    snippet di integrazione (timoniere.py + lele_api.py) per un nuovo DAG e
+    li scrive in AI_TMP/airflow_incoming/ per revisione manuale. NON tocca mai
+    i file live (stesso principio di sicurezza di IMPROVE, disabilitato via
+    Telegram) — Danny controlla e copia a mano."""
+    return text.lower().strip().startswith("crea dag ")
+
+
+def parse_crea_dag_description(text: str) -> str:
+    t = text.strip()
+    if t.lower().startswith("crea dag "):
+        return t[len("crea dag "):].strip()
+    return ""
 
 
 def parse_airflow_status_dag_id(text: str) -> str:
@@ -659,8 +709,12 @@ def route(user_input: str) -> str:
         return AGENT_TTS_STATUS
     if is_airflow_status_trigger(text):
         return AGENT_AIRFLOW_STATUS
+    if is_decision_run_trigger(text):
+        return AGENT_DECISION_RUN
     if is_decision_trigger(text):
         return AGENT_DECISION
+    if is_crea_dag_trigger(text):
+        return AGENT_CREA_DAG
     if is_directory_trigger(text):
         return AGENT_DIRECTORY
     if is_tts_copy_trigger(text):

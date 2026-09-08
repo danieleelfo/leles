@@ -158,6 +158,14 @@ KNOWN_DAGS = {
             "judge_model": "str, opzionale, default 'deepseek-r1'",
         },
     },
+    "decisione_run_dag": {
+        "description": "Analisi decisionale completa di una run Emergence Lab: analizza ogni iterazione singolarmente, ricostruisce l'evoluzione del processo decisionale e infine estrae/valida la decisione finale (pipeline TaskFlow multi-step con dynamic mapping — più approfondita e lenta del semplice decisione_dag).",
+        "params": {
+            "emergence_run_id": "int, obbligatorio — ID di una run già esistente e completata (ATTENZIONE: qui la chiave e' 'emergence_run_id', NON 'run_id' come negli altri DAG decisionali)",
+            "judge_model": "str, opzionale, default 'mistral'",
+            "judge_role": "str, opzionale, default 'CTO, Expert in data, Analista Decisionale ed Esperto di Dinamiche di Gruppo Multi-Agente'",
+        },
+    },
     "sintetizza_dag": {
         "description": "Sintetizza i risultati di una run Emergence Lab già completata: analizza tutti e 12 i ruoli individualmente + un'analisi globale (analyze_run, LLM-as-a-Judge)",
         "params": {
@@ -526,6 +534,145 @@ def set_dag_paused(dag_id: str, paused: bool) -> str:
 
     stato = "attivato ▶️" if not paused else "messo in pausa ⏸️"
     return f"✅ DAG '{dag_id}' {stato}."
+
+
+# --- Generazione automatica snippet di integrazione per un nuovo DAG -------
+#
+# Flusso 'crea dag <descrizione>':
+#   LLM (Ollama) legge la descrizione + due esempi reali già presenti nel
+#   codice (is_decision_run_trigger/parse_decision_run_args in timoniere.py,
+#   e l'handler AGENT_DECISION_RUN in lele_api.py) e genera per analogia gli
+#   snippet per il nuovo DAG. L'output NON tocca mai timoniere.py/lele_api.py
+#   direttamente — viene scritto in AI_TMP/airflow_incoming/ per revisione
+#   manuale e copia-incolla da parte di Danny, stesso principio di sicurezza
+#   di IMPROVE (disabilitato via Telegram perché modifica file locali).
+
+# Calcolato dinamicamente da __file__ (mai hardcoded — vedi memoria progetto):
+# questo file vive in scripts/, la project root è la sua cartella genitrice.
+_PROJECT_ROOT_FOR_SCAFFOLD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DAG_SCAFFOLD_OUTPUT_DIR = os.path.join(_PROJECT_ROOT_FOR_SCAFFOLD, "AI_TMP", "airflow_incoming")
+
+SYSTEM_CREA_DAG = """Sei un ingegnere software che estende un router deterministico Python
+(pattern matching su stringhe, NIENTE LLM nel routing) per Lelé/Leles.
+
+Riceverai la descrizione in linguaggio naturale di un nuovo comando che deve
+lanciare un DAG Airflow via `trigger_dag_run(dag_id, conf)` (già esistente,
+NON reimplementarla).
+
+Genera ESATTAMENTE tre blocchi di codice Python, in quest'ordine, seguendo
+alla lettera lo stile ed i pattern degli esempi:
+
+1. Blocco per timoniere.py: una funzione `is_<nome>_trigger(text) -> bool`
+   che riconosce il comando testuale, e una `parse_<nome>_args(text)` che ne
+   estrae i parametri. Aggiungi anche la riga `AGENT_<NOME> = "<nome_dag>"`
+   e la riga da inserire in route() (`if is_<nome>_trigger(text): return AGENT_<NOME>`).
+
+2. Blocco per lele_api.py: l'handler `if agent == AGENT_<NOME>: ...` che
+   costruisce `conf` dai parametri estratti e chiama
+   `trigger_dag_run("<dag_id>", conf)`, ritornando subito il dag_run_id
+   (il DAG è asincrono, NON attendere il completamento).
+
+3. Blocco per airflow_agent.py: la voce da aggiungere a KNOWN_DAGS.
+
+ESEMPIO REALE DI RIFERIMENTO (stesso identico pattern, adattalo, non copiarlo
+se il nuovo comando ha parametri diversi):
+
+--- timoniere.py ---
+def is_decision_run_trigger(text: str) -> bool:
+    t = text.lower().strip()
+    return t.startswith("decisione run ") or t.startswith("decisione dag ")
+
+def parse_decision_run_args(text: str):
+    t = text.strip()
+    low = t.lower()
+    for prefix in ("decisione run ", "decisione dag "):
+        if low.startswith(prefix):
+            parts = t[len(prefix):].strip().split()
+            if not parts:
+                return None, None
+            try:
+                run_id = int(parts[0])
+            except ValueError:
+                return None, None
+            judge_model = parts[1] if len(parts) > 1 else None
+            return run_id, judge_model
+    return None, None
+
+--- lele_api.py ---
+if agent == AGENT_DECISION_RUN:
+    run_id, judge_model = parse_decision_run_args(user_input)
+    if run_id is None:
+        result = "Uso: 'decisione run <run_id> [judge_model]'"
+    else:
+        conf = {"emergence_run_id": run_id}
+        if judge_model:
+            conf["judge_model"] = judge_model
+        ok, result_id = trigger_dag_run("decisione_run_dag", conf)
+        result = f"DAG lanciato - run_id: {result_id}" if ok else result_id
+    save_memory("USER", user_input)
+    return {"answer": result, "type": AGENT_DECISION_RUN}
+
+REGOLE TASSATIVE:
+- Output SOLO codice Python nei tre blocchi, nessuna spiegazione fuori dai blocchi.
+- Ogni blocco preceduto da un commento `# === BLOCCO N: <file> ===`.
+- Non inventare funzioni che non esistono (trigger_dag_run, save_memory sono già disponibili).
+- Nomi coerenti tra i tre blocchi (stesso AGENT_<NOME>, stesso dag_id).
+"""
+
+
+def generate_dag_integration_snippets(description: str) -> str:
+    """
+    Genera (via Ollama) gli snippet di integrazione timoniere.py + lele_api.py
+    + KNOWN_DAGS per un nuovo comando/DAG, a partire da una descrizione in
+    linguaggio naturale, e li salva in AI_TMP/airflow_incoming/ per revisione
+    manuale. Non scrive MAI su timoniere.py o lele_api.py direttamente.
+    """
+    if not description.strip():
+        return "🌬️ Dimmi cosa deve fare il nuovo comando/DAG (es. 'crea dag lancia memory_summary_dag per la run X')."
+
+    try:
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_CREA_DAG},
+                    {"role": "user", "content": description},
+                ],
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": 2500},
+            },
+            timeout=180,
+        )
+        response.raise_for_status()
+        snippets = response.json().get("message", {}).get("content", "").strip()
+    except Exception as e:
+        return f"❌ LLM non raggiungibile: {e}"
+
+    if not snippets:
+        return "❌ L'LLM ha prodotto una risposta vuota, riprova o riformula la descrizione."
+
+    os.makedirs(DAG_SCAFFOLD_OUTPUT_DIR, exist_ok=True)
+    filename = f"dag_scaffold_{uuid.uuid4().hex[:8]}.py"
+    output_path = os.path.join(DAG_SCAFFOLD_OUTPUT_DIR, filename)
+
+    header = (
+        f'"""\n'
+        f"Scaffold generato automaticamente da 'crea dag' — SOLO REVIEW, non live.\n"
+        f"Descrizione richiesta:\n{description}\n\n"
+        f"Copia manualmente i blocchi giusti in timoniere.py / lele_api.py /\n"
+        f"airflow_agent.py (KNOWN_DAGS) dopo revisione.\n"
+        f'"""\n\n'
+    )
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(header + snippets)
+
+    return (
+        f"🌀 Scaffold generato: {output_path}\n"
+        f"Revisiona e copia i blocchi in timoniere.py / lele_api.py / "
+        f"KNOWN_DAGS (airflow_agent.py) — nessun file live è stato toccato."
+    )
 
 
 def get_latest_task_log(dag_id: str, task_id: str, try_number: int = 1) -> str:

@@ -33,7 +33,7 @@ from scripts.verify_agent import verify_agent
 from scripts.git_agent import git_pull, git_pull_force, git_status, git_diff, git_last_commit_diff
 from scripts.process_agent import start_process, stop_process, restart_process, uvicorn_status, telegram_status, system_status, get_logs, get_tts_status, get_directory_listing, copy_tts_voices, install_tts_voice, export_dag_file
 from scripts.health_agent import check_ollama, check_postgres, get_uptime, get_public_ip, get_ip_status, get_os_status, get_ram_breakdown
-from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log, set_dag_paused
+from scripts.airflow_agent import airflow_agent, get_dag_runs_status, get_all_dags_status, get_latest_task_log, set_dag_paused, trigger_dag_run, generate_dag_integration_snippets
 from core.artifact_synthesizer import generate_final_artifacts
 from core.emergence_analysis import analyze_decision
 from core.emergence_prompts import get_prompts, update_prompt
@@ -73,6 +73,10 @@ from scripts.timoniere import (
     parse_task_log_args,
     AGENT_DECISION,
     parse_decision_args,
+    AGENT_DECISION_RUN,
+    parse_decision_run_args,
+    AGENT_CREA_DAG,
+    parse_crea_dag_description,
     AGENT_DAG_PAUSE,
     parse_dag_pause_id,
     AGENT_DAG_UNPAUSE,
@@ -529,6 +533,41 @@ def ask_lele(q: Question):
 
         save_memory("LELE_P_DECISION_ES", result, chat_id=q.chat_id)
         return {"answer": result, "type": AGENT_DECISION}
+
+    if agent == AGENT_DECISION_RUN:
+        run_id, judge_model = parse_decision_run_args(user_input)
+        print(f"######## AIRFLOW TRIGGER (decisione_run_dag, emergence_run_id={run_id}, judge={judge_model}) ########")
+        save_memory("USER_ES", user_input, chat_id=q.chat_id)
+
+        if not run_id:
+            result = "❌ Uso: 'decisione run <run_id> [judge_model]' (es. 'decisione run 47' o 'decisione run 47 mistral')"
+        else:
+            conf = {"emergence_run_id": run_id}
+            if judge_model:
+                conf["judge_model"] = judge_model
+
+            ok, dag_result = trigger_dag_run("decisione_run_dag", conf)
+            if ok:
+                result = (
+                    f"🌀 DAG 'decisione_run_dag' lanciato — run_id: {dag_result}\n"
+                    f"conf: {conf}\n"
+                    f"⏳ Analisi per-iterazione + evoluzione + decisione finale, può richiedere qualche minuto.\n"
+                    f"Controlla con: 'status dag decisione_run_dag'"
+                )
+            else:
+                result = dag_result
+
+        save_memory("LELE_P_DECISION_RUN_ES", result, chat_id=q.chat_id)
+        return {"answer": result, "type": AGENT_DECISION_RUN}
+
+    if agent == AGENT_CREA_DAG:
+        description = parse_crea_dag_description(user_input)
+        save_memory("USER", user_input)
+
+        result = generate_dag_integration_snippets(description)
+
+        save_memory("LELE_P_CREA_DAG", result)
+        return {"answer": result, "type": AGENT_CREA_DAG}
 
     if agent == AGENT_GIT_PULL:
         project = extract_project(user_input)
