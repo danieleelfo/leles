@@ -25,6 +25,52 @@ from core.llm import query_model
 logger = logging.getLogger(__name__)
 
 
+# FIX (2026-09-09): PROJECT_CONTEXT mancava — era importato da
+# core/improve_engine.py (`from core.emergence_engine import PROJECT_CONTEXT, ...`)
+# ma non era mai stato definito in questo file. Questo causava un
+# ImportError a livello di modulo, che a sua volta faceva fallire il
+# parsing di improve_dag.py in Airflow (DAG mostrato "in errore" nella UI,
+# senza nemmeno bisogno di eseguirlo — l'import fallisce prima di qualsiasi
+# task). Testo scritto da Claude su richiesta di Danny ("scrivi tu poi
+# correggo") — da rivedere/personalizzare a piacere, non è vincolante.
+#
+# Scopo: dare agli agenti Emergence Lab un contesto minimo e stabile sul
+# progetto Leles PRIMA di mostrargli codice reale da migliorare (usato da
+# improve_engine.py in run_code_improvement(), interpolato nello scenario
+# insieme al codice sorgente del file target).
+PROJECT_CONTEXT = """
+Contesto del progetto (Leles):
+
+Leles è un ecosistema di assistenti AI locale-first, gestito quasi
+esclusivamente via Telegram. Gira su Mac (Apple Silicon), usa Ollama per
+l'inferenza locale (modelli: llama3, gemma4, qwen2.5, deepseek-r1,
+mistral), PostgreSQL come storage persistente, FastAPI/uvicorn come layer
+API, e Apache Airflow per l'orchestrazione di task lunghi/asincroni
+(DAG in ~/Desktop/Danny/airflow/dags/, non tracciati in git).
+
+Convenzioni di codice da rispettare quando si propongono modifiche:
+- Connessioni al DB sempre tramite core/db.py (get_connection()), mai
+  hardcodare credenziali o aprire connessioni parallele.
+- Logging strutturato via modulo `logging`, non print() nudi nel codice
+  di produzione (print() è accettabile solo per output diagnostico
+  temporaneo negli script standalone).
+- Mai usare kill -9 / pkill -9 sui processi: shutdown pulito e attesa
+  prima di un eventuale restart, per evitare 409 Conflict lato Telegram
+  su bot in polling.
+- I path vanno calcolati dinamicamente (es. da __file__), mai
+  hardcodati in valore assoluto quando evitabile.
+- Le funzioni pubbliche hanno docstring in italiano, concise, che
+  spiegano IL PERCHÉ di una scelta non ovvia, non solo COSA fa il codice.
+- Le modifiche proposte devono essere file completi e autonomi, pronti
+  per essere copiati ed eseguiti — niente snippet parziali o
+  placeholder tipo "# resto invariato".
+
+L'obiettivo di ogni miglioramento è codice più leggibile, robusto (error
+handling esplicito), e coerente con queste convenzioni — non riscritture
+speculative che cambiano l'architettura senza necessità.
+""".strip()
+
+
 def get_models():
     """Ritorna [{'id':.., 'name':..}, ...] per tutti i modelli configurati."""
     conn = get_connection()
@@ -234,6 +280,7 @@ def resolve_models_for_agents(agents, models, model_strategy="random", model_ove
                 )
         else:
             model = models_by_id.get(agent.get("default_model_id"))
+
             if not model:
                 raise ValueError(
                     f"Agente '{agent['name']}' non ha un default_model_id valido — "

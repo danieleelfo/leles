@@ -181,6 +181,18 @@ KNOWN_DAGS = {
             "content": "str, contenuto del file (DEVE essere tra <<<CONTENUTO e CONTENUTO>>>)",
         },
     },
+    "improve_dag": {
+        "description": "Refactoring/aggiunta feature guidata da agenti multi-modello (Emergence Lab) su un singolo file .py esistente, con sintesi finale in AI_TMP (markdown riassuntivo, mode='resume' di default — non genera file di codice pronti a meno di modificare generate_final_artifacts per mode='code').",
+        "params": {
+            "target_file_path": "str, obbligatorio — path assoluto del file .py da migliorare",
+            "feature_request": "str, opzionale — istruzioni su cosa migliorare (default generico se omesso)",
+            "num_iterations": "int, opzionale, default 3",
+            "temperature": "float, opzionale, default 0.7",
+            "seed": "int, opzionale, default 42",
+            "synthesizer_model": "str, opzionale, default 'qwen2.5'",
+            "output_dir": "str, opzionale, default '/Users/danny/Desktop/Danny/AI_TMP'",
+        },
+    },
     "emergence_flow": {
         "description": "Pipeline completa in un unico DAG: lancia una nuova simulazione multi-agente e poi l'analisi finale (target_role), senza dipendere da trigger inter-DAG (sostituisce il vecchio emergence_full_pipeline).",
         "params": {
@@ -194,10 +206,11 @@ KNOWN_DAGS = {
         },
     },
     "process_multiple_files": {
-        "description": "Sposta MULTIPLI file, ognuno nella SUA destinazione. file_paths e target_paths devono avere la stessa lunghezza.",
+        "description": "Sposta MULTIPLI file, ognuno nella SUA destinazione. file_paths e target_paths devono avere la stessa lunghezza. Confermato funzionante in produzione (2026-09-09) per deployare file core via Telegram quando 'salva file' testuale non è praticabile per dimensione. IMPORTANTE: senza 'overwrite': true il comportamento osservato è 'successo' riportato ma NESSUNA copia reale se il file di destinazione esiste già — includerlo sempre esplicitamente.",
         "params": {
             "file_paths": "list, obbligatorio — lista di path assoluti dei file sorgente",
             "target_paths": "list, obbligatorio — lista di path di destinazione (uno per ogni file)",
+            "overwrite": "bool, fortemente raccomandato = true — vedi nota sopra",
         },
     },
     "process_uploaded_file": {
